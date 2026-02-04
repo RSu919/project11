@@ -3,7 +3,7 @@ import { createClient } from
 
 const supabase = createClient(
   "https://mbdatbwrralhlkhyhxlr.supabase.co",
-  "sb_publishable_XXXX"   // ← 你的 publishable key
+  "sb_publishable_M4HS-bVHV0_Q1x4awoaCGw_zCAIQB7Y"   // ← 你的 publishable key
 );
 
 // ⚠️ 換成你真的 questionnaire.id（UUID）
