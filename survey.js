@@ -3,7 +3,7 @@ import { createClient } from
 
 const supabase = createClient(
   "https://mbdatbwrralhlkhyhxlr.supabase.co",
-  "sb_publishable_M4HS-bVHV0_Q1x4awoaCGw_zCAIQB7Y"   // ← 你的 publishable key
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok"   // ← 你的 publishable key
 );
 
 // ⚠️ 換成你真的 questionnaire.id（UUID）
