@@ -27,6 +27,7 @@ async function initRespondent() {
         .select().single();
 
     if (error) return null;
+    console.log("✅ respondent created:", data.id);
     return data.id;
 }
 
@@ -48,21 +49,19 @@ function renderPage() {
 
     if (!q) return;
 
-    // 計算進度
     const totalQ = allQuestions.length;
     const currentQCount = allQuestions.indexOf(q) + 1;
     const progressPercent = (currentQCount / totalQ) * 100;
 
     pageStartTime = Date.now();
 
-    // 判斷題型：是否為文字輸入 (選項包含 "文字輸入" 或沒選項)
-    const isTextInput = q.options && (q.options.includes("文字輸入") || q.options.length === 0);
+    // 關鍵修正：判斷是否為文字輸入題
+    // 只要選項內容是 ["文字輸入"] 或者選項長度為 1 且包含 "文字" 字眼
+    const isTextInput = q.options && q.options.some(opt => opt.includes("文字"));
 
     app.innerHTML = `
         <div class="survey-container">
-            <div class="progress-container">
-                <div class="progress-bar" style="width: ${progressPercent}%"></div>
-            </div>
+            <div class="progress-container"><div class="progress-bar" style="width: ${progressPercent}%"></div></div>
             <div class="progress-text">Question ${currentQCount} / ${totalQ}</div>
 
             <div class="question-box">
@@ -78,8 +77,9 @@ function renderPage() {
                     ${isTextInput ? `
                         <input type="text" class="text-input" 
                                value="${answersCache[q.id] || ''}" 
+                               onchange="window.saveTextAnswer('${q.id}', this.value)"
                                oninput="window.saveTextAnswer('${q.id}', this.value)"
-                               placeholder="請在此輸入答案...">
+                               placeholder="請輸入答案...">
                     ` : `
                         ${q.options.map((opt, idx) => `
                             <div class="opt-item ${answersCache[q.id] === opt ? 'selected' : ''}" 
@@ -94,7 +94,8 @@ function renderPage() {
 
             <div class="nav-section">
                 ${(currentBlockIndex === 0 && currentQuestionIndexInBlock === 0) ? '' : 
-                  `<button class="control-btn" onclick="window.prevPage()">返回上一題</button>`}
+                  `<button class="control-btn" style="margin-right:15px" onclick="window.prevPage()">返回上一題</button>`}
+                
                 <button class="next-btn" onclick="window.nextPage()">
                     ${(currentBlockIndex === blocks.length - 1 && currentQuestionIndexInBlock === blockQuestions.length - 1) ? '提交問卷' : '下一題'}
                 </button>
@@ -103,10 +104,10 @@ function renderPage() {
     `;
 }
 
-// --- 全域互動功能 ---
+// --- 互動功能掛載到 window ---
 window.selectOption = (qId, opt) => {
     answersCache[qId] = opt;
-    renderPage(); // 重新渲染以顯示藍色高亮
+    renderPage(); 
 };
 
 window.saveTextAnswer = (qId, val) => {
@@ -134,7 +135,6 @@ window.nextPage = async () => {
         return;
     }
 
-    // 儲存答案
     const reactionTime = Math.round((Date.now() - pageStartTime) / 1000);
     await supabase.from("response").insert({
         respondent_id: respondentId,
@@ -166,12 +166,17 @@ window.playAudio = (text, rate = 1.0, qId) => {
     window.speechSynthesis.speak(utter);
 };
 
+window.adjustFontSize = (delta) => {
+    const root = document.documentElement;
+    const currentSize = parseInt(getComputedStyle(root).getPropertyValue('--base-size') || 18);
+    root.style.setProperty('--base-size', (currentSize + delta) + 'px');
+};
+
 async function completeSurvey() {
     await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
     app.innerHTML = `<div class="finish-card"><h2>🎉 問卷已完成</h2><p>感謝您的參與。</p></div>`;
 }
 
-// --- 啟動 ---
 (async () => {
     respondentId = await initRespondent();
     if (respondentId) loadSurveyData();
