@@ -1,14 +1,25 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <title>睡眠問卷</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研究問卷系統</title>
+    <style>
+        :root { --base-size: 18px; }
+        body { font-size: var(--base-size); padding: 20px; line-height: 1.6; }
+        .controls { position: sticky; top: 0; background: #eee; padding: 10px; margin-bottom: 20px; }
+        .question-box { border: 1px solid #ccc; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        .opt-btn { display: block; width: 100%; margin: 5px 0; padding: 10px; text-align: left; cursor: pointer; }
+    </style>
 </head>
 <body>
+    <div class="controls">
+        <button onclick="adjustFontSize(2)">字體大 A+</button>
+        <button onclick="adjustFontSize(-2)">字體小 A-</button>
+    </div>
 
-  
-  <div id="app"></div>
+    <div id="app">正在啟動問卷系統...</div>
 
-  <script type="module" src="./survey_v2.js"></script>
-</body>  
+    <script type="module" src="./survey_v2.js"></script>
+</body>
 </html>
