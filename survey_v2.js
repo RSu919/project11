@@ -27,11 +27,10 @@ async function initRespondent() {
         .select().single();
 
     if (error) return null;
-    console.log("✅ respondent created:", data.id);
     return data.id;
 }
 
-// --- 2. 行為紀錄 (研究核心數據) ---
+// --- 2. 行為紀錄 ---
 async function logAction(type, targetId = null, metadata = {}) {
     if (!respondentId) return;
     await supabase.from("action_log").insert({
@@ -45,30 +44,43 @@ async function logAction(type, targetId = null, metadata = {}) {
 
 // --- 3. 載入資料 ---
 async function loadSurveyData() {
-    const { data: bData } = await supabase.from("question_block").select("*").eq("questionnaire_id", QUESTIONNAIRE_ID).order("order_index");
-    const { data: qData } = await supabase.from("question").select("*").order("order_index");
+    // 取得區塊並強制排序
+    const { data: bData } = await supabase.from("question_block").select("*").eq("questionnaire_id", QUESTIONNAIRE_ID).order("order_index", { ascending: true });
+    // 取得題目並強制排序
+    const { data: qData } = await supabase.from("question").select("*").order("order_index", { ascending: true });
     
     blocks = bData;
     allQuestions = qData;
     renderPage();
 }
 
-// --- 4. 渲染頁面 ---
+// --- 4. 渲染頁面 (優化後的排序與題數計算) ---
 function renderPage() {
-    const block = blocks[currentBlockIndex];
-    const blockQuestions = allQuestions.filter(q => q.block_id === block.id);
-    const q = blockQuestions[currentQuestionIndexInBlock];
+    // A. 建立線性題目時間軸 (確保顯示序號 1, 2, 3... 永遠正確)
+    const sortedTimeline = [];
+    blocks.sort((a, b) => a.order_index - b.order_index).forEach(b => {
+        const bQs = allQuestions
+            .filter(item => item.block_id === b.id)
+            .sort((a, b) => a.order_index - b.order_index);
+        sortedTimeline.push(...bQs);
+    });
 
+    const block = blocks[currentBlockIndex];
+    const blockQuestions = allQuestions
+        .filter(q => q.block_id === block.id)
+        .sort((a, b) => a.order_index - b.order_index);
+        
+    const q = blockQuestions[currentQuestionIndexInBlock];
     if (!q) return;
 
-    // 計算總進度
-    const totalQ = allQuestions.length;
-    const currentQCount = allQuestions.indexOf(q) + 1;
+    // B. 精確計算當前是總數的第幾題
+    const currentQCount = sortedTimeline.findIndex(item => item.id === q.id) + 1;
+    const totalQ = sortedTimeline.length;
     const progressPercent = (currentQCount / totalQ) * 100;
 
     pageStartTime = Date.now();
 
-    // 關鍵修正：判斷是否顯示「文字輸入框」
+    // 文字輸入題判斷
     const isTextInput = !q.options || 
                         q.options.length === 0 || 
                         q.options.some(opt => opt.includes("文字") || opt.includes("輸入")) ||
@@ -94,7 +106,7 @@ function renderPage() {
                         <input type="text" class="text-input" 
                                value="${answersCache[q.id] || ''}" 
                                oninput="window.saveTextAnswer('${q.id}', this.value)"
-                               placeholder="請點擊此處輸入答案...">
+                               placeholder="請在此輸入答案...">
                     ` : `
                         ${q.options.map((opt, idx) => `
                             <div class="opt-item ${answersCache[q.id] === opt ? 'selected' : ''}" 
@@ -119,25 +131,22 @@ function renderPage() {
     `;
 }
 
-// --- 5. 互動功能 (掛載至 window 以供 HTML onclick 使用) ---
+// --- 5. 互動功能 ---
 window.selectOption = (qId, opt) => {
     answersCache[qId] = opt;
-    renderPage(); // 觸發變色效果
+    renderPage();
 };
 
 window.saveTextAnswer = (qId, val) => {
-    answersCache[qId] = val; // 即時存檔
+    answersCache[qId] = val;
 };
 
 window.prevPage = () => {
-    const q = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id)[currentQuestionIndexInBlock];
-    logAction('nav_back', q.id); // 紀錄返回行為
-    
     if (currentQuestionIndexInBlock > 0) {
         currentQuestionIndexInBlock--;
     } else if (currentBlockIndex > 0) {
         currentBlockIndex--;
-        const prevBlockQs = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id);
+        const prevBlockQs = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id).sort((a,b)=>a.order_index - b.order_index);
         currentQuestionIndexInBlock = prevBlockQs.length - 1;
     }
     renderPage();
@@ -145,11 +154,11 @@ window.prevPage = () => {
 
 window.nextPage = async () => {
     const block = blocks[currentBlockIndex];
-    const blockQuestions = allQuestions.filter(q => q.block_id === block.id);
+    const blockQuestions = allQuestions.filter(q => q.block_id === block.id).sort((a,b)=>a.order_index - b.order_index);
     const q = blockQuestions[currentQuestionIndexInBlock];
 
     if (!answersCache[q.id] || answersCache[q.id].trim() === "") {
-        alert("請完成此題再繼續填答。");
+        alert("請填寫此題後再繼續。");
         return;
     }
 
@@ -179,8 +188,7 @@ window.nextPage = async () => {
 window.playAudio = (text, rate = 1.0, qId) => {
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'zh-TW';
-    utter.rate = rate;
+    utter.lang = 'zh-TW'; utter.rate = rate;
     window.speechSynthesis.speak(utter);
     logAction(rate < 1.0 ? 'speech_slow' : 'speech_normal', qId);
 };
@@ -195,7 +203,7 @@ window.adjustFontSize = (delta) => {
 
 async function completeSurvey() {
     await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
-    app.innerHTML = `<div class="finish-card"><h2>🎉 問卷已完成</h2><p>感謝您的參與，資料已成功上傳。</p></div>`;
+    app.innerHTML = `<div class="finish-card"><h2>🎉 問卷已完成</h2><p>感謝您的參與。</p></div>`;
 }
 
 (async () => {
