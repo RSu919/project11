@@ -6,10 +6,10 @@ import { createClient } from
 ================================ */
 const supabase = createClient(
   "https://mbdatbwrralhlkhyhxlr.supabase.co",
-  "❗請放你的 anon public JWT（不是 sb_publishable）"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok"
 );
 
-const QUESTIONNAIRE_ID = "請貼上 questionnaire.id UUID";
+const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
 
 const app = document.getElementById("app");
 
