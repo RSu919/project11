@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 // ⚠️ 換成你真的 questionnaire.id（UUID）
-const QUESTIONNAIRE_ID = "請貼上你的 questionnaire UUID";
+const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
 
 const app = document.getElementById("app");
 
