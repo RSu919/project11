@@ -13,7 +13,7 @@ let pageStartTime = null;
 
 const app = document.getElementById("app");
 
-// --- 初始化填答者 ---
+// --- 1. 初始化填答者 ---
 async function initRespondent() {
     const isTablet = window.innerWidth >= 768 && window.innerWidth <= 1024;
     const { data, error } = await supabase
@@ -31,7 +31,19 @@ async function initRespondent() {
     return data.id;
 }
 
-// --- 載入資料 ---
+// --- 2. 行為紀錄 (研究核心數據) ---
+async function logAction(type, targetId = null, metadata = {}) {
+    if (!respondentId) return;
+    await supabase.from("action_log").insert({
+        respondent_id: respondentId,
+        action_type: type,
+        target_id: targetId,
+        metadata: metadata,
+        created_at: new Date().toISOString()
+    });
+}
+
+// --- 3. 載入資料 ---
 async function loadSurveyData() {
     const { data: bData } = await supabase.from("question_block").select("*").eq("questionnaire_id", QUESTIONNAIRE_ID).order("order_index");
     const { data: qData } = await supabase.from("question").select("*").order("order_index");
@@ -41,7 +53,7 @@ async function loadSurveyData() {
     renderPage();
 }
 
-// --- 渲染頁面 ---
+// --- 4. 渲染頁面 ---
 function renderPage() {
     const block = blocks[currentBlockIndex];
     const blockQuestions = allQuestions.filter(q => q.block_id === block.id);
@@ -49,15 +61,19 @@ function renderPage() {
 
     if (!q) return;
 
+    // 計算總進度
     const totalQ = allQuestions.length;
     const currentQCount = allQuestions.indexOf(q) + 1;
     const progressPercent = (currentQCount / totalQ) * 100;
 
     pageStartTime = Date.now();
 
-    // 關鍵修正：判斷是否為文字輸入題
-    // 只要選項內容是 ["文字輸入"] 或者選項長度為 1 且包含 "文字" 字眼
-    const isTextInput = q.options && q.options.some(opt => opt.includes("文字"));
+    // 關鍵修正：判斷是否顯示「文字輸入框」
+    const isTextInput = !q.options || 
+                        q.options.length === 0 || 
+                        q.options.some(opt => opt.includes("文字") || opt.includes("輸入")) ||
+                        q.question_text.includes("姓名") || 
+                        q.question_text.includes("年齡");
 
     app.innerHTML = `
         <div class="survey-container">
@@ -77,9 +93,8 @@ function renderPage() {
                     ${isTextInput ? `
                         <input type="text" class="text-input" 
                                value="${answersCache[q.id] || ''}" 
-                               onchange="window.saveTextAnswer('${q.id}', this.value)"
                                oninput="window.saveTextAnswer('${q.id}', this.value)"
-                               placeholder="請輸入答案...">
+                               placeholder="請點擊此處輸入答案...">
                     ` : `
                         ${q.options.map((opt, idx) => `
                             <div class="opt-item ${answersCache[q.id] === opt ? 'selected' : ''}" 
@@ -104,17 +119,20 @@ function renderPage() {
     `;
 }
 
-// --- 互動功能掛載到 window ---
+// --- 5. 互動功能 (掛載至 window 以供 HTML onclick 使用) ---
 window.selectOption = (qId, opt) => {
     answersCache[qId] = opt;
-    renderPage(); 
+    renderPage(); // 觸發變色效果
 };
 
 window.saveTextAnswer = (qId, val) => {
-    answersCache[qId] = val;
+    answersCache[qId] = val; // 即時存檔
 };
 
 window.prevPage = () => {
+    const q = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id)[currentQuestionIndexInBlock];
+    logAction('nav_back', q.id); // 紀錄返回行為
+    
     if (currentQuestionIndexInBlock > 0) {
         currentQuestionIndexInBlock--;
     } else if (currentBlockIndex > 0) {
@@ -131,7 +149,7 @@ window.nextPage = async () => {
     const q = blockQuestions[currentQuestionIndexInBlock];
 
     if (!answersCache[q.id] || answersCache[q.id].trim() === "") {
-        alert("請完成本題再繼續");
+        alert("請完成此題再繼續填答。");
         return;
     }
 
@@ -164,17 +182,20 @@ window.playAudio = (text, rate = 1.0, qId) => {
     utter.lang = 'zh-TW';
     utter.rate = rate;
     window.speechSynthesis.speak(utter);
+    logAction(rate < 1.0 ? 'speech_slow' : 'speech_normal', qId);
 };
 
 window.adjustFontSize = (delta) => {
     const root = document.documentElement;
     const currentSize = parseInt(getComputedStyle(root).getPropertyValue('--base-size') || 18);
-    root.style.setProperty('--base-size', (currentSize + delta) + 'px');
+    const newSize = currentSize + delta;
+    root.style.setProperty('--base-size', newSize + 'px');
+    logAction('font_scale', null, { size: newSize });
 };
 
 async function completeSurvey() {
     await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
-    app.innerHTML = `<div class="finish-card"><h2>🎉 問卷已完成</h2><p>感謝您的參與。</p></div>`;
+    app.innerHTML = `<div class="finish-card"><h2>🎉 問卷已完成</h2><p>感謝您的參與，資料已成功上傳。</p></div>`;
 }
 
 (async () => {

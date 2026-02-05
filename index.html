@@ -17,7 +17,7 @@
             font-family: system-ui, -apple-system, sans-serif; 
             color: #2d3748; 
             margin: 0;
-            transition: font-size 0.2s ease; /* 讓字體放大時平滑一點 */
+            transition: font-size 0.2s ease;
         }
 
         /* 頂部工具列 */
@@ -45,10 +45,18 @@
         .block-tag { color: var(--primary); font-weight: bold; font-size: 0.9em; margin-bottom: 10px; }
         .question-text { font-size: 1.4em; margin-bottom: 30px; line-height: 1.5; }
 
-        /* 文字輸入框 */
+        /* 文字輸入框修正：增加點擊範圍與游標提示 */
         .text-input {
-            width: 100%; padding: 18px; font-size: 1.2em; border: 2px solid #edf2f7;
-            border-radius: 12px; box-sizing: border-box; transition: 0.2s;
+            width: 100%; 
+            padding: 18px; 
+            font-size: 1.2em; 
+            border: 2px solid #edf2f7;
+            border-radius: 12px; 
+            box-sizing: border-box; 
+            transition: 0.2s;
+            cursor: text; /* 確保游標形態正確 */
+            background: white;
+            display: block;
         }
         .text-input:focus { border-color: var(--primary); outline: none; background: var(--bg-soft); }
 
@@ -59,11 +67,12 @@
         }
         .opt-item:hover { background: #fcfcfd; border-color: #cbd5e0; }
 
-        /* 選中狀態：顯著的藍色回饋 */
+        /* 選中狀態：顯著的藍色回饋 (使用 !important 確保強制生效) */
         .opt-item.selected { 
             border-color: var(--primary) !important; 
             background-color: var(--bg-soft) !important; 
             border-width: 3px !important;
+            box-shadow: 0 4px 10px rgba(76, 81, 191, 0.1);
         }
         .opt-label { 
             width: 32px; height: 32px; background: #edf2f7; display: flex; 
@@ -74,15 +83,33 @@
 
         /* 導航按鈕 */
         .nav-section { margin-top: 30px; display: flex; justify-content: center; gap: 15px; }
-        .control-btn { background: #e2e8f0; border: none; padding: 10px 20px; border-radius: 30px; cursor: pointer; font-size: 0.9em; }
+        
+        /* 專門給返回按鈕使用的灰色樣式 */
+        .control-btn { 
+            background: #e2e8f0; 
+            border: none; 
+            padding: 12px 25px; 
+            border-radius: 30px; 
+            cursor: pointer; 
+            font-size: 0.9em; 
+            color: #4a5568;
+            transition: 0.2s;
+        }
+        .control-btn:hover { background: #cbd5e0; }
+
         .next-btn { 
             background: var(--primary); color: white; border: none; padding: 15px 60px; 
-            border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(76, 81, 191, 0.3);
+            border-radius: 30px; font-weight: bold; cursor: pointer; 
+            box-shadow: 0 4px 12px rgba(76, 81, 191, 0.3);
+            transition: 0.2s;
         }
+        .next-btn:hover { background: #434190; transform: translateY(-1px); }
 
         /* 語音按鈕 */
         .audio-section { display: flex; gap: 10px; margin-bottom: 25px; }
         .audio-btn { background: #f1f5f9; border: none; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9em; }
+        
+        .finish-card { text-align: center; background: white; padding: 60px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
