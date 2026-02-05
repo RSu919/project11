@@ -42,16 +42,21 @@ async function loadSurveyData() {
 function renderPage() {
     // 建立線性時間軸計算正確題號
     const sortedTimeline = [];
-    blocks.sort((a, b) => a.order_index - b.order_index).forEach(b => {
+    const sortedBlocks = [...blocks].sort((a, b) => a.order_index - b.order_index);
+    
+    sortedBlocks.forEach(b => {
         const bQs = allQuestions.filter(item => item.block_id === b.id).sort((a, b) => a.order_index - b.order_index);
         sortedTimeline.push(...bQs);
     });
 
-    const block = blocks[currentBlockIndex];
+    const block = sortedBlocks[currentBlockIndex];
     const blockQuestions = allQuestions.filter(q => q.block_id === block.id).sort((a, b) => a.order_index - b.order_index);
     const q = blockQuestions[currentQuestionIndexInBlock];
 
-    if (!q) return;
+    if (!q) {
+        console.error("找不到題目，可能是索引出錯");
+        return;
+    }
 
     const currentQCount = sortedTimeline.findIndex(item => item.id === q.id) + 1;
     const totalQ = sortedTimeline.length;
@@ -89,35 +94,45 @@ window.playAudio = (text, rate = 1.0, qId) => { window.speechSynthesis.cancel();
 window.adjustFontSize = (delta) => { const root = document.documentElement; const currentSize = parseInt(getComputedStyle(root).getPropertyValue('--base-size') || 18); root.style.setProperty('--base-size', (currentSize + delta) + 'px'); logAction('font_scale', null, { size: currentSize + delta }); };
 
 window.prevPage = () => {
-    if (currentQuestionIndexInBlock > 0) { currentQuestionIndexInBlock--; } 
-    else if (currentBlockIndex > 0) { currentBlockIndex--; const prevBlockQs = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id); currentQuestionIndexInBlock = prevBlockQs.length - 1; }
+    if (currentQuestionIndexInBlock > 0) { 
+        currentQuestionIndexInBlock--; 
+    } else if (currentBlockIndex > 0) { 
+        currentBlockIndex--; 
+        const prevBlockQs = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id).sort((a, b) => a.order_index - b.order_index); 
+        currentQuestionIndexInBlock = prevBlockQs.length - 1; 
+    }
     renderPage();
 };
 
 window.nextPage = async () => {
-    const block = blocks[currentBlockIndex];
-    const blockQuestions = allQuestions.filter(q => q.block_id === block.id).sort((a, b) => a.order_index - b.order_index);
-    const q = blockQuestions[currentQuestionIndexInBlock];
+    try {
+        const block = blocks[currentBlockIndex];
+        const blockQuestions = allQuestions.filter(q => q.block_id === block.id).sort((a, b) => a.order_index - b.order_index);
+        const q = blockQuestions[currentQuestionIndexInBlock];
 
-    if (!answersCache[q.id] || answersCache[q.id].trim() === "") { alert("請填寫此題。"); return; }
+        if (!answersCache[q.id] || answersCache[q.id].trim() === "") { alert("請填寫此題。"); return; }
 
-    const reactionTime = Math.round((Date.now() - pageStartTime) / 1000);
-    const { error } = await supabase.from("response").insert({ respondent_id: respondentId, question_id: q.id, answer_value: answersCache[q.id], reaction_time_sec: reactionTime });
-    
-    if (error) { alert("儲存失敗"); return; }
+        const reactionTime = Math.round((Date.now() - pageStartTime) / 1000);
+        const { error } = await supabase.from("response").insert({ respondent_id: respondentId, question_id: q.id, answer_value: answersCache[q.id], reaction_time_sec: reactionTime });
+        
+        if (error) { throw error; }
 
-    if (currentQuestionIndexInBlock < blockQuestions.length - 1) {
-        currentQuestionIndexInBlock++;
-    } else if (currentBlockIndex < blocks.length - 1) {
-        if (block.encouragement_text) alert(block.encouragement_text);
-        currentBlockIndex++;
-        currentQuestionIndexInBlock = 0;
-    } else {
-        await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
-        app.innerHTML = `<div class="finish-card"><h2>🎉 完成</h2><p>感謝您的參與。</p></div>`;
-        return;
+        if (currentQuestionIndexInBlock < blockQuestions.length - 1) {
+            currentQuestionIndexInBlock++;
+        } else if (currentBlockIndex < blocks.length - 1) {
+            if (block.encouragement_text) alert(block.encouragement_text);
+            currentBlockIndex++;
+            currentQuestionIndexInBlock = 0; // 跨區塊重置索引
+        } else {
+            await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
+            app.innerHTML = `<div class="finish-card"><h2>🎉 完成</h2><p>感謝您的參與。</p></div>`;
+            return;
+        }
+        renderPage();
+    } catch (err) {
+        console.error("發生錯誤:", err);
+        alert("資料儲存或換頁發生錯誤，請檢查網路。");
     }
-    renderPage();
 };
 
 (async () => { respondentId = await initRespondent(); if (respondentId) loadSurveyData(); })();
