@@ -26,16 +26,23 @@ window.selectOption = (el, val) => {
     currentAnswer = val; 
 };
 
+// 尺規數值更新函數
+window.updateSliderValue = (el) => {
+    const val = el.value;
+    const display = document.getElementById('sliderValDisplay');
+    if (display) display.innerText = val;
+    currentAnswer = val; 
+};
+
 // 語音朗讀邏輯
 window.speak = (rate) => {
     const text = questions[currentIndex].question_text;
     const msg = new SpeechSynthesisUtterance(text);
     msg.lang = 'zh-TW';
-    msg.rate = rate; // 1.0 為正常, 0.7 為慢速
-    window.speechSynthesis.cancel(); // 停止目前的朗讀
+    msg.rate = rate; // 1.0 為正常, 0.6 為慢速
+    window.speechSynthesis.cancel(); 
     window.speechSynthesis.speak(msg);
     
-    // 更新點讀次數
     if (respondentId) {
         supabase.rpc('increment_tts', { rid: respondentId }).then(({error}) => {
             if (error) console.error("TTS 紀錄失敗", error);
@@ -113,6 +120,24 @@ function renderQuestion() {
 }
 
 function renderOptions(q) {
+    // 判定是否為 0-10 的量表 (睡眠信念量表)
+    if (q.question_type === 'radio' && Array.isArray(q.options) && q.options.length === 11 && q.options.includes("0")) {
+        currentAnswer = "5"; // 尺規預設值
+        return `
+            <div class="slider-container">
+                <div class="slider-labels">
+                    <span>非常不同意 (0)</span>
+                    <span>非常同意 (10)</span>
+                </div>
+                <input type="range" class="ruler-slider" min="0" max="10" step="1" value="5" oninput="window.updateSliderValue(this)">
+                <div class="ruler-marks">
+                    ${[0,1,2,3,4,5,6,7,8,9,10].map(v => `<span>${v}</span>`).join('')}
+                </div>
+                <div class="current-value-display">目前選擇：<span id="sliderValDisplay">5</span> 分</div>
+            </div>
+        `;
+    }
+
     if (q.question_type === 'radio' && Array.isArray(q.options)) {
         return q.options.map((opt, i) => `
             <div class="opt-item" onclick="window.selectOption(this, '${opt}')">
@@ -129,7 +154,7 @@ async function handleNext() {
     const textInput = document.getElementById('textAns');
     if (textInput) finalAnswer = textInput.value.trim();
 
-    if (!finalAnswer) { alert("請填寫答案後再繼續"); return; }
+    if (finalAnswer === null || finalAnswer === "") { alert("請填寫答案或調整滑桿後再繼續"); return; }
 
     if (respondentId) {
         await supabase.from('response').insert([{
