@@ -96,7 +96,7 @@ function renderQuestion() {
                 
                 <div class="audio-section">
                     <button class="audio-btn" onclick="window.speak(1.0)">🔊 正常語音</button>
-                    <button class="audio-btn" onclick="window.speak(0.7)">🐌 慢速語音</button>
+                    <button class="audio-btn" onclick="window.speak(0.6)">🐌 慢速語音</button>
                 </div>
 
                 <div class="question-text">${q.question_text}</div>
