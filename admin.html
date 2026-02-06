@@ -105,9 +105,10 @@
     }
 
     async function loadAuthorizedProjects(userId) {
+        // 修正重點 1：將 select 指向 research_project
         const { data, error } = await supabase
             .from('project_permission')
-            .select(`project_id, project:project_id ( id, name )`)
+            .select(`project_id, project:research_project ( id, name )`)
             .eq('user_id', userId);
 
         if (error || !data || data.length === 0) {
@@ -115,7 +116,6 @@
             return;
         }
 
-        // 關鍵修正：排除掉 project 為 null 的無效紀錄
         const validData = data.filter(item => item.project !== null);
 
         if (validData.length === 0) {
@@ -131,13 +131,18 @@
 
     window.handleProjectChange = async (projectId) => {
         if (!projectId) return;
+        // 修正重點 2：將專案關聯指向 research_project
         const { data: quest, error } = await supabase
             .from('questionnaire')
-            .select('id, project:research_id(name)')
+            .select('id, project:research_project(name)')
             .eq('research_id', projectId)
             .single();
 
-        if (error || !quest) { alert("找不到對應問卷。"); return; }
+        if (error || !quest) { 
+            console.error("抓取問卷失敗:", error);
+            alert("找不到對應問卷。"); 
+            return; 
+        }
         currentQuestionnaireId = quest.id;
         document.getElementById('currentProjectTitle').innerText = `${quest.project.name} - 管理後台`;
         loadDashboard();
