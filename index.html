@@ -101,6 +101,7 @@
             max-width: 500px; margin: 100px auto;
         }
     </style>
+    <link rel="icon" href="data:,">
 </head>
 <body>
     <div class="controls">
@@ -113,7 +114,15 @@
             正在啟動問卷系統...
         </div>
     </div>
-
+    <script>
+        // 簡單的超時檢查
+        setTimeout(() => {
+            const app = document.getElementById('app');
+            if (app.innerText.includes('正在啟動')) {
+                document.getElementById('retryBtn').style.display = 'inline-block';
+            }
+        }, 5000);
+    </script>
     <script type="module" src="./survey_v2.js"></script>
 </body>
 </html>
