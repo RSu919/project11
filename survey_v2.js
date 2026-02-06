@@ -1,142 +1,126 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
-const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
+const supabase = createClient(
+    "https://mbdatbwrralhlkhyhxlr.supabase.co", 
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok"
+);
 
+// 根據您的 Schema，這應該是 questionnaire 表的 ID
+const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a"; 
+
+let questions = [];
+let currentIndex = 0;
 let respondentId = null;
-let blocks = [];
-let allQuestions = [];
-let currentBlockIndex = 0;
-let currentQuestionIndexInBlock = 0;
-let answersCache = {}; 
-let pageStartTime = null;
 
-const app = document.getElementById("app");
-
+// 1. 初始化受試者
 async function initRespondent() {
-    const isTablet = window.innerWidth >= 768 && window.innerWidth <= 1024;
-    const { data, error } = await supabase.from("respondent").insert({
-        questionnaire_id: QUESTIONNAIRE_ID,
-        start_time: new Date().toISOString(),
-        device_type: isTablet ? "tablet" : "mobile",
-        abandoned: true 
-    }).select().single();
-    return error ? null : data.id;
+    const { data, error } = await supabase
+        .from('respondent')
+        .insert([{ 
+            questionnaire_id: QUESTIONNAIRE_ID,
+            device_type: window.innerWidth < 768 ? 'mobile' : 'desktop',
+            start_time: new Date().toISOString(),
+            abandoned: true 
+        }])
+        .select();
+
+    if (data && data.length > 0) {
+        respondentId = data[0].id;
+    } else {
+        console.error("無法建立受試者紀錄:", error);
+    }
 }
 
-async function logAction(type, targetId = null, metadata = {}) {
-    if (!respondentId) return;
-    await supabase.from("action_log").insert({
-        respondent_id: respondentId, action_type: type, target_id: targetId, metadata: metadata, created_at: new Date().toISOString()
-    });
-}
+// 2. 抓取題目 (關鍵修正點)
+async function fetchQuestions() {
+    const { data, error } = await supabase
+        .from('question_block')
+        .select(`
+            id,
+            title,
+            encouragement_text,
+            question (
+                id,
+                question_text,   /* 修正：根據您的紀錄，欄位是 question_text 而非 content */
+                question_type,   /* 修正：根據您的紀錄，欄位是 question_type 而非 type */
+                options,
+                order_index
+            )
+        `)
+        .eq('questionnaire_id', QUESTIONNAIRE_ID)
+        .order('order_index', { ascending: true });
 
-async function loadSurveyData() {
-    const { data: bData } = await supabase.from("question_block").select("*").eq("questionnaire_id", QUESTIONNAIRE_ID).order("order_index");
-    const { data: qData } = await supabase.from("question").select("*").order("order_index");
-    blocks = bData;
-    allQuestions = qData;
-    renderPage();
-}
-
-function renderPage() {
-    const sortedTimeline = [];
-    const sortedBlocks = [...blocks].sort((a, b) => a.order_index - b.order_index);
-    
-    sortedBlocks.forEach(b => {
-        const bQs = allQuestions.filter(item => item.block_id === b.id).sort((a, b) => a.order_index - b.order_index);
-        sortedTimeline.push(...bQs);
-    });
-
-    const block = sortedBlocks[currentBlockIndex];
-    const blockQuestions = allQuestions.filter(q => q.block_id === block.id).sort((a, b) => a.order_index - b.order_index);
-    const q = blockQuestions[currentQuestionIndexInBlock];
-
-    if (!q) {
-        console.error("找不到題目，可能是索引出錯");
+    if (error || !data) {
+        console.error("讀取題目失敗:", error);
+        document.getElementById('app').innerHTML = `<div style="padding:20px;">讀取失敗，請確認資料庫中 questionnaire_id 是否正確。</div>`;
         return;
     }
 
-    const currentQCount = sortedTimeline.findIndex(item => item.id === q.id) + 1;
-    const totalQ = sortedTimeline.length;
-    const progressPercent = (currentQCount / totalQ) * 100;
+    // 將資料平坦化
+    questions = [];
+    data.forEach(block => {
+        if (block.question) {
+            block.question.sort((a, b) => a.order_index - b.order_index).forEach(q => {
+                questions.push({
+                    ...q,
+                    blockTitle: block.title,
+                    encouragement: block.encouragement_text
+                });
+            });
+        }
+    });
 
-    pageStartTime = Date.now();
-
-    // --- 關鍵修正處 ---
-    // 只有在真的沒有選項，或者選項包含"文字"字眼時，才視為文字輸入。
-    // 並且排除了"年齡"關鍵字對是非題的干擾，只針對"您的年齡"這類題目進行文字判斷。
-    const isTextInput = (!q.options || q.options.length === 0 || q.options.some(opt => opt.includes("文字") || opt.includes("輸入"))) || 
-                       (q.question_text === "您的姓名" || q.question_text === "您的年齡");
-
-    app.innerHTML = `
-        <div class="survey-container">
-            <div class="progress-container"><div class="progress-bar" style="width: ${progressPercent}%"></div></div>
-            <div class="progress-text">Question ${currentQCount} / ${totalQ}</div>
-            <div class="question-box">
-                <div class="block-tag">${block.block_name}</div>
-                <h2 class="question-text" style="white-space: pre-wrap;">${q.question_text}</h2>
-                <div class="audio-section">
-                    <button class="audio-btn" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 1.0, '${q.id}')">🔊 正常</button>
-                    <button class="audio-btn slow" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 0.5, '${q.id}')">🐢 慢速</button>
-                </div>
-                <div class="options-list">
-                    ${isTextInput ? `<input type="text" class="text-input" value="${answersCache[q.id] || ''}" oninput="window.saveTextAnswer('${q.id}', this.value)" placeholder="請在此輸入...">` : 
-                    q.options.map((opt, idx) => `<div class="opt-item ${answersCache[q.id] === opt ? 'selected' : ''}" onclick="window.selectOption('${q.id}', '${opt}')"><span class="opt-label">${String.fromCharCode(65 + idx)}</span><span class="opt-text">${opt}</span></div>`).join("")}
-                </div>
-            </div>
-            <div class="nav-section">
-                ${(currentBlockIndex === 0 && currentQuestionIndexInBlock === 0) ? '' : `<button class="control-btn" style="margin-right:15px" onclick="window.prevPage()">返回</button>`}
-                <button class="next-btn" onclick="window.nextPage()">${(currentBlockIndex === blocks.length - 1 && currentQuestionIndexInBlock === blockQuestions.length - 1) ? '提交問卷' : '下一題'}</button>
-            </div>
-        </div>`;
+    if (questions.length === 0) {
+        document.getElementById('app').innerHTML = `<div style="padding:20px;">此問卷目前沒有題目資料。</div>`;
+    } else {
+        renderQuestion();
+    }
 }
 
-window.selectOption = (qId, opt) => { answersCache[qId] = opt; renderPage(); };
-window.saveTextAnswer = (qId, val) => { answersCache[qId] = val; };
-window.playAudio = (text, rate = 1.0, qId) => { window.speechSynthesis.cancel(); const utter = new SpeechSynthesisUtterance(text); utter.lang = 'zh-TW'; utter.rate = rate; window.speechSynthesis.speak(utter); logAction(rate < 1.0 ? 'speech_slow' : 'speech_normal', qId); };
-window.adjustFontSize = (delta) => { const root = document.documentElement; const currentSize = parseInt(getComputedStyle(root).getPropertyValue('--base-size') || 18); root.style.setProperty('--base-size', (currentSize + delta) + 'px'); logAction('font_scale', null, { size: currentSize + delta }); };
+// 3. 渲染題目邏輯
+function renderQuestion() {
+    const q = questions[currentIndex];
+    const app = document.getElementById('app');
+    
+    // 渲染進度條與題目內容
+    app.innerHTML = `
+        <div class="survey-container">
+            <div class="progress-container">
+                <div class="progress-bar" style="width: ${(currentIndex / questions.length * 100)}%"></div>
+            </div>
+            <div class="progress-text">已完成 ${currentIndex} / ${questions.length} 題</div>
+            
+            <div class="question-box">
+                <div class="block-tag">${q.blockTitle || ''}</div>
+                <div class="question-text">${q.question_text}</div>
+                <div id="options-container">
+                    ${renderOptions(q)}
+                </div>
+                <div class="nav-section">
+                    <button class="next-btn" id="nextBtn">下一題</button>
+                </div>
+            </div>
+        </div>
+    `;
 
-window.prevPage = () => {
-    if (currentQuestionIndexInBlock > 0) { 
-        currentQuestionIndexInBlock--; 
-    } else if (currentBlockIndex > 0) { 
-        currentBlockIndex--; 
-        const prevBlockQs = allQuestions.filter(q => q.block_id === blocks[currentBlockIndex].id).sort((a, b) => a.order_index - b.order_index); 
-        currentQuestionIndexInBlock = prevBlockQs.length - 1; 
+    document.getElementById('nextBtn').onclick = handleNext;
+}
+
+// 處理選項渲染
+function renderOptions(q) {
+    if (q.question_type === 'radio' && Array.isArray(q.options)) {
+        return q.options.map((opt, i) => `
+            <div class="opt-item" onclick="window.selectOption(this, '${opt}')">
+                <span class="opt-label">${String.fromCharCode(65 + i)}</span>
+                <span class="opt-text">${opt}</span>
+            </div>
+        `).join('');
     }
-    renderPage();
-};
+    return `<input type="text" class="text-input" id="textAns" placeholder="請輸入答案">`;
+}
 
-window.nextPage = async () => {
-    try {
-        const block = blocks[currentBlockIndex];
-        const blockQuestions = allQuestions.filter(q => q.block_id === block.id).sort((a, b) => a.order_index - b.order_index);
-        const q = blockQuestions[currentQuestionIndexInBlock];
-
-        if (!answersCache[q.id] || answersCache[q.id].trim() === "") { alert("請填寫此題。"); return; }
-
-        const reactionTime = Math.round((Date.now() - pageStartTime) / 1000);
-        const { error } = await supabase.from("response").insert({ respondent_id: respondentId, question_id: q.id, answer_value: answersCache[q.id], reaction_time_sec: reactionTime });
-        
-        if (error) { throw error; }
-
-        if (currentQuestionIndexInBlock < blockQuestions.length - 1) {
-            currentQuestionIndexInBlock++;
-        } else if (currentBlockIndex < blocks.length - 1) {
-            if (block.encouragement_text) alert(block.encouragement_text);
-            currentBlockIndex++;
-            currentQuestionIndexInBlock = 0; 
-        } else {
-            await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
-            app.innerHTML = `<div class="finish-card"><h2>🎉 完成</h2><p>感謝您的參與。</p></div>`;
-            return;
-        }
-        renderPage();
-    } catch (err) {
-        console.error("發生錯誤:", err);
-        alert("資料儲存或換頁發生錯誤，請檢查網路。");
-    }
-};
-
-(async () => { respondentId = await initRespondent(); if (respondentId) loadSurveyData(); })();
+// 啟動流程
+(async () => {
+    await initRespondent();
+    await fetchQuestions();
+})();
