@@ -5,12 +5,28 @@ const supabase = createClient(
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok"
 );
 
-// 根據您的 Schema，這應該是 questionnaire 表的 ID
 const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a"; 
 
 let questions = [];
 let currentIndex = 0;
 let respondentId = null;
+let currentAnswer = null; // 紀錄當前選取的答案
+
+// --- [新增] 補齊字體調整函數，避免 index.html 報錯 ---
+window.adjustFontSize = (delta) => {
+    const body = document.body;
+    const currentSize = parseFloat(window.getComputedStyle(body).fontSize);
+    body.style.fontSize = (currentSize + delta) + "px";
+};
+
+// --- [新增] 選項選取邏輯 ---
+window.selectOption = (el, val) => {
+    // 移除其他選項的選取狀態
+    document.querySelectorAll('.opt-item').forEach(item => item.classList.remove('selected'));
+    // 加入選取狀態
+    el.classList.add('selected');
+    currentAnswer = val;
+};
 
 // 1. 初始化受試者
 async function initRespondent() {
@@ -31,7 +47,7 @@ async function initRespondent() {
     }
 }
 
-// 2. 抓取題目 (關鍵修正點)
+// 2. 抓取題目 (對齊您的真實 Schema)
 async function fetchQuestions() {
     const { data, error } = await supabase
         .from('question_block')
@@ -41,8 +57,8 @@ async function fetchQuestions() {
             encouragement_text,
             question (
                 id,
-                question_text,   /* 修正：根據您的紀錄，欄位是 question_text 而非 content */
-                question_type,   /* 修正：根據您的紀錄，欄位是 question_type 而非 type */
+                question_text,   /* 真實欄位名 */
+                question_type,   /* 真實欄位名 */
                 options,
                 order_index
             )
@@ -56,7 +72,6 @@ async function fetchQuestions() {
         return;
     }
 
-    // 將資料平坦化
     questions = [];
     data.forEach(block => {
         if (block.question) {
@@ -81,14 +96,14 @@ async function fetchQuestions() {
 function renderQuestion() {
     const q = questions[currentIndex];
     const app = document.getElementById('app');
+    currentAnswer = null; // 重設答案
     
-    // 渲染進度條與題目內容
     app.innerHTML = `
         <div class="survey-container">
             <div class="progress-container">
                 <div class="progress-bar" style="width: ${(currentIndex / questions.length * 100)}%"></div>
             </div>
-            <div class="progress-text">已完成 ${currentIndex} / ${questions.length} 題</div>
+            <div class="progress-text">進度：${currentIndex + 1} / ${questions.length}</div>
             
             <div class="question-box">
                 <div class="block-tag">${q.blockTitle || ''}</div>
@@ -106,7 +121,6 @@ function renderQuestion() {
     document.getElementById('nextBtn').onclick = handleNext;
 }
 
-// 處理選項渲染
 function renderOptions(q) {
     if (q.question_type === 'radio' && Array.isArray(q.options)) {
         return q.options.map((opt, i) => `
@@ -117,6 +131,36 @@ function renderOptions(q) {
         `).join('');
     }
     return `<input type="text" class="text-input" id="textAns" placeholder="請輸入答案">`;
+}
+
+// --- [新增] 下一題邏輯 (包含簡易存檔) ---
+async function handleNext() {
+    const q = questions[currentIndex];
+    let finalAnswer = currentAnswer;
+
+    // 如果是填充題，抓取 input 的值
+    if (q.question_type !== 'radio') {
+        const input = document.getElementById('textAns');
+        finalAnswer = input ? input.value : null;
+    }
+
+    // 存入 response 表
+    if (respondentId) {
+        await supabase.from('response').insert([{
+            respondent_id: respondentId,
+            question_id: q.id,
+            answer_value: finalAnswer
+        }]);
+    }
+
+    currentIndex++;
+    if (currentIndex < questions.length) {
+        renderQuestion();
+    } else {
+        // 完成問卷，更新 respondent 狀態
+        await supabase.from('respondent').update({ abandoned: false }).eq('id', respondentId);
+        document.getElementById('app').innerHTML = `<div class="finish-card"><h2>感謝您的填答！</h2><p>您的資料已成功送出。</p></div>`;
+    }
 }
 
 // 啟動流程

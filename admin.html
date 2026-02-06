@@ -11,10 +11,15 @@
         .sidebar { background: #2f3542; color: white; min-height: 100vh; padding: 20px; }
         .main-content { padding: 30px; }
         .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .table-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
+        .table-container, .editor-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; }
         .user-info { font-size: 0.85rem; color: #bdc3c7; margin-bottom: 10px; }
         .project-selector { background: #3e4451; color: white; border: 1px solid #57606f; font-size: 0.9rem; padding: 10px; border-radius: 8px; width: 100%; margin: 15px 0; cursor: pointer; }
+        .nav-link { cursor: pointer; transition: 0.2s; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); }
+        .nav-link.active { background: var(--primary-color) !important; border-radius: 5px; }
+        .block-card { border: 1px solid #eee; border-radius: 10px; padding: 15px; margin-bottom: 15px; background: #fafafa; }
+        .question-item { background: white; border-left: 4px solid var(--primary-color); padding: 10px; margin: 10px 0; border-radius: 4px; font-size: 0.9rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
     </style>
 </head>
 <body>
@@ -32,33 +37,57 @@
 
             <hr>
             <ul class="nav flex-column">
-                <li class="nav-item mb-2"><a href="#" class="nav-link text-white active">📊 數據概覽</a></li>
-                <li class="nav-item mb-2"><a href="#" class="nav-link text-white">📝 題目管理</a></li>
-                <li class="nav-item mb-2"><a href="#" class="nav-link text-white">⚙️ 研究案設定</a></li>
-                <li class="nav-item mt-5"><a href="#" onclick="window.handleLogout()" class="nav-link text-danger">🚪 登出系統</a></li>
+                <li class="nav-item mb-2">
+                    <a id="nav-stats" onclick="window.showSection('stats')" class="nav-link text-white active">📊 數據概覽</a>
+                </li>
+                <li class="nav-item mb-2">
+                    <a id="nav-editor" onclick="window.showSection('editor')" class="nav-link text-white">📝 題目管理</a>
+                </li>
+                <li class="nav-item mb-2">
+                    <a class="nav-link text-white">⚙️ 研究案設定</a>
+                </li>
+                <li class="nav-item mt-5">
+                    <a onclick="window.handleLogout()" class="nav-link text-danger">門 登出系統</a>
+                </li>
             </ul>
         </div>
 
         <div class="col-md-10 main-content">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2 id="currentProjectTitle">載入中...</h2>
-                <button class="btn btn-success" id="btnExport">📥 匯出 SPSS 格式 (CSV)</button>
+                <div id="dashboard-actions">
+                    <button class="btn btn-success" id="btnExport">📥 匯出 SPSS 格式 (CSV)</button>
+                </div>
             </div>
 
-            <div class="row mb-4">
-                <div class="col-md-4"><div class="stat-card"><h6>總參與人數</h6><h2 id="totalRespondents">-</h2></div></div>
-                <div class="col-md-4"><div class="stat-card"><h6>已完成問卷</h6><h2 class="text-success" id="completedCount">-</h2></div></div>
-                <div class="col-md-4"><div class="stat-card"><h6>填答中 / 已流失</h6><h2 class="text-warning" id="pendingCount">-</h2></div></div>
+            <div id="section-stats">
+                <div class="row mb-4">
+                    <div class="col-md-4"><div class="stat-card"><h6>總參與人數</h6><h2 id="totalRespondents">-</h2></div></div>
+                    <div class="col-md-4"><div class="stat-card"><h6>已完成問卷</h6><h2 class="text-success" id="completedCount">-</h2></div></div>
+                    <div class="col-md-4"><div class="stat-card"><h6>填答中 / 已流失</h6><h2 class="text-warning" id="pendingCount">-</h2></div></div>
+                </div>
+
+                <div class="table-container">
+                    <h5>受試者即時動態</h5>
+                    <table class="table table-hover mt-3">
+                        <thead class="table-light">
+                            <tr><th>受試者 ID</th><th>裝置</th><th>開始時間</th><th>填答進度</th><th>狀態</th></tr>
+                        </thead>
+                        <tbody id="respondentTable"></tbody>
+                    </table>
+                </div>
             </div>
 
-            <div class="table-container">
-                <h5>受試者即時動態</h5>
-                <table class="table table-hover mt-3">
-                    <thead class="table-light">
-                        <tr><th>受試者 ID</th><th>裝置</th><th>開始時間</th><th>填答進度</th><th>狀態</th></tr>
-                    </thead>
-                    <tbody id="respondentTable"></tbody>
-                </table>
+            <div id="section-editor" style="display: none;">
+                <div class="editor-container">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5>問卷題目結構清單</h5>
+                        <button class="btn btn-primary btn-sm" onclick="alert('視覺化編輯功能開發中')">➕ 新增題目區塊</button>
+                    </div>
+                    <div id="questionStructure">
+                        <div class="text-center py-5 text-muted">正在讀取資料庫題目數據...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -70,6 +99,19 @@
     const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
 
     let currentQuestionnaireId = null;
+    let currentProjectId = null;
+
+    // --- 介面切換邏輯 ---
+    window.showSection = (section) => {
+        document.getElementById('section-stats').style.display = section === 'stats' ? 'block' : 'none';
+        document.getElementById('section-editor').style.display = section === 'editor' ? 'block' : 'none';
+        
+        document.getElementById('nav-stats').classList.toggle('active', section === 'stats');
+        document.getElementById('nav-editor').classList.toggle('active', section === 'editor');
+
+        if (section === 'editor') loadQuestionStructure();
+        else loadDashboard();
+    };
 
     async function checkAuth() {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -82,14 +124,12 @@
     }
 
     async function loadAuthorizedProjects(userId) {
-        // 根據 Schema：project 使用 'name' 欄位
         const { data, error } = await supabase
             .from('project_permission')
             .select(`project_id, project:project_id ( id, name )`)
             .eq('user_id', userId);
 
         if (error || !data || data.length === 0) {
-            console.error("權限抓取失敗:", error);
             document.getElementById('projectSelect').innerHTML = `<option value="">無權限</option>`;
             return;
         }
@@ -102,8 +142,8 @@
 
     window.handleProjectChange = async (projectId) => {
         if (!projectId) return;
+        currentProjectId = projectId;
         
-        // 根據 Schema：questionnaire 使用 'research_id' 關聯 project，project 使用 'name'
         const { data: quest, error } = await supabase
             .from('questionnaire')
             .select('id, project:research_id(name)')
@@ -111,16 +151,22 @@
             .single();
 
         if (error || !quest) {
-            console.error("問卷抓取失敗:", error);
             alert("該專案尚未建立問卷或關聯異常。");
             return;
         }
 
         currentQuestionnaireId = quest.id;
-        document.getElementById('currentProjectTitle').innerText = `${quest.project.name} - 數據監控`;
-        loadDashboard();
+        document.getElementById('currentProjectTitle').innerText = `${quest.project.name} - 管理後台`;
+        
+        // 依照當前所在頁面刷新內容
+        if (document.getElementById('section-editor').style.display === 'block') {
+            loadQuestionStructure();
+        } else {
+            loadDashboard();
+        }
     };
 
+    // 載入數據概覽數據
     async function loadDashboard() {
         if (!currentQuestionnaireId) return;
 
@@ -130,10 +176,7 @@
             .eq('questionnaire_id', currentQuestionnaireId)
             .order('start_time', { ascending: false });
 
-        if (error) {
-            console.error("儀表板載入失敗:", error);
-            return;
-        }
+        if (error) return;
 
         document.getElementById('totalRespondents').innerText = respondents.length;
         document.getElementById('completedCount').innerText = respondents.filter(r => !r.abandoned).length;
@@ -153,6 +196,63 @@
                 </td>
                 <td><span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">${r.abandoned ? '填答中' : '已完成'}</span></td>
             </tr>
+        `).join('');
+    }
+
+    // --- 核心：載入資料庫中的題目結構 (對齊您的 Schema) ---
+    async function loadQuestionStructure() {
+        if (!currentQuestionnaireId) return;
+        const container = document.getElementById('questionStructure');
+        container.innerHTML = '<div class="text-center py-5 text-muted">正在連線資料庫，抓取題目清單...</div>';
+
+        // 使用與問卷端一致的抓取邏輯
+        const { data: blocks, error } = await supabase
+            .from('question_block')
+            .select(`
+                id, title, order_index, encouragement_text,
+                question ( id, question_text, question_type, order_index, options )
+            `)
+            .eq('questionnaire_id', currentQuestionnaireId)
+            .order('order_index', { ascending: true });
+
+        if (error || !blocks) {
+            container.innerHTML = '<div class="alert alert-danger">題目讀取失敗，請檢查資料庫連線。</div>';
+            return;
+        }
+
+        if (blocks.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">此研究案目前尚未建立任何題目區塊。</div>';
+            return;
+        }
+
+        container.innerHTML = blocks.map(block => `
+            <div class="block-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <span class="badge bg-primary mb-2">Block ${block.order_index}</span>
+                        <h5 class="mb-1">${block.title || '未命名區塊'}</h5>
+                        <p class="small text-muted">本區塊結束鼓勵語：${block.encouragement_text || '未設定'}</p>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="alert('編輯區塊功能開發中')">⚙️ 區塊設定</button>
+                </div>
+                <div class="question-list mt-3">
+                    ${block.question && block.question.length > 0 ? 
+                        block.question.sort((a,b) => a.order_index - b.order_index).map(q => `
+                            <div class="question-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted me-2">Q${q.order_index}.</span>
+                                    <span>${q.question_text}</span>
+                                </div>
+                                <div class="d-flex gap-2 align-items-center">
+                                    <span class="badge bg-light text-dark border" style="font-size: 0.7rem;">${q.question_type}</span>
+                                    <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="console.log('${q.id}')">✏️</button>
+                                </div>
+                            </div>
+                        `).join('') 
+                        : '<div class="small text-muted ps-3">此區塊內尚無題目</div>'
+                    }
+                </div>
+            </div>
         `).join('');
     }
 
