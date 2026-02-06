@@ -2,20 +2,13 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>研究管理後台 - 數據監控</title>
+    <title>研究管理後台 - 睡眠研究系統</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        :root { --primary-color: #4a69bd; }
-        body { background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .sidebar { background: #2f3542; color: white; min-height: 100vh; padding: 20px; }
+        body { background-color: #f8f9fa; }
+        .sidebar { background: #2c3e50; color: white; min-height: 100vh; padding: 20px; }
         .main-content { padding: 30px; }
-        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .table-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
-        .project-selector { background: #3e4451; color: white; border: 1px solid #57606f; padding: 10px; border-radius: 8px; width: 100%; margin: 15px 0; cursor: pointer; }
-        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; }
-        .nav-link { cursor: pointer; color: white; text-decoration: none; display: block; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
-        .nav-link.active { background: var(--primary-color); }
+        .project-selector { width: 100%; padding: 10px; background: #34495e; color: white; border: none; border-radius: 5px; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -23,40 +16,32 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-md-2 sidebar">
-            <h3>Admin Panel</h3>
-            <div id="userInfo" class="small text-muted mb-3">驗證中...</div>
-            <label class="small text-muted">目前切換研究案：</label>
-            <select id="projectSelect" class="project-selector" onchange="window.handleProjectChange(this.value)">
-                <option value="">載入中...</option>
-            </select>
+            <h4>管理選單</h4>
+            <div id="userEmail" class="small mb-3 text-info">驗證中...</div>
+            <label class="small text-muted">切換研究計畫：</label>
+            <select id="projectSelect" class="project-selector"></select>
             <hr>
-            <nav>
-                <a onclick="window.showSection('stats')" id="nav-stats" class="nav-link active">📊 數據概覽</a>
-                <a onclick="window.handleLogout()" class="nav-link text-danger mt-5">🚪 登出系統</a>
-            </nav>
+            <button class="btn btn-outline-danger btn-sm w-100" onclick="handleLogout()">登出</button>
         </div>
 
         <div class="col-md-10 main-content">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 id="currentProjectTitle">載入中...</h2>
-                <button class="btn btn-success" id="btnExport">📥 匯出 SPSS 格式 (CSV)</button>
+                <h2 id="displayTitle">載入中...</h2>
+                <button class="btn btn-success" id="exportCsv">📥 匯出研究數據 (CSV)</button>
             </div>
 
-            <div id="section-stats">
-                <div class="row mb-4">
-                    <div class="col-md-4"><div class="stat-card"><h6>總參與人數</h6><h2 id="totalRespondents">-</h2></div></div>
-                    <div class="col-md-4"><div class="stat-card"><h6>已完成問卷</h6><h2 class="text-success" id="completedCount">-</h2></div></div>
-                    <div class="col-md-4"><div class="stat-card"><h6>填答中 / 流失</h6><h2 class="text-warning" id="pendingCount">-</h2></div></div>
-                </div>
-                <div class="table-container">
-                    <h5>受試者即時動態</h5>
-                    <table class="table table-hover mt-3">
-                        <thead class="table-light">
-                            <tr><th>受試者 ID</th><th>裝置</th><th>開始時間</th><th>填答進度</th><th>狀態</th></tr>
-                        </thead>
-                        <tbody id="respondentTable"></tbody>
-                    </table>
-                </div>
+            <div class="row mb-4">
+                <div class="col-md-3"><div class="card p-3"><h6>總參與者</h6><h2 id="countTotal">-</h2></div></div>
+                <div class="col-md-3"><div class="card p-3"><h6>已完成</h6><h2 id="countDone" class="text-success">-</h2></div></div>
+                <div class="col-md-3"><div class="card p-3"><h6>平均點讀次數</h6><h2 id="avgTts">-</h2></div></div>
+            </div>
+
+            <div class="card p-3">
+                <h5>受試者列表</h5>
+                <table class="table">
+                    <thead><tr><th>ID</th><th>裝置</th><th>點讀次數</th><th>狀態</th><th>填答進度</th></tr></thead>
+                    <tbody id="respondentList"></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -67,112 +52,82 @@
 
     const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
 
-    let currentQuestionnaireId = null;
+    let currentQuestId = null;
 
-    async function checkAuth() {
+    // 1. 驗證登入並抓取「正確欄位: title」的專案
+    async function init() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) { window.location.href = 'login.html'; return; }
-        document.getElementById('userInfo').innerText = `👤 ${session.user.email}`;
-        loadAuthorizedProjects(session.user.id);
-    }
+        document.getElementById('userEmail').innerText = session.user.email;
 
-    async function loadAuthorizedProjects(userId) {
-        // 修正重點：欄位名稱由 name 改為您截圖確認過的 title
-        const { data, error } = await supabase
+        // 對齊 Schema: 使用 research_project!inner(id, title)
+        const { data: perms } = await supabase
             .from('project_permission')
-            .select(`
-                project_id,
-                research_project!inner ( id, title )
-            `)
-            .eq('user_id', userId);
+            .select(`project_id, research_project!inner(id, title)`)
+            .eq('user_id', session.user.id);
 
-        if (error) {
-            console.error("抓取專案失敗:", error);
-            document.getElementById('projectSelect').innerHTML = `<option>錯誤: ${error.message}</option>`;
-            return;
+        if (perms && perms.length > 0) {
+            const select = document.getElementById('projectSelect');
+            select.innerHTML = perms.map(p => `<option value="${p.research_project.id}">${p.research_project.title}</option>`).join('');
+            select.onchange = (e) => loadProjectData(e.target.value);
+            loadProjectData(perms[0].research_project.id);
         }
-
-        const select = document.getElementById('projectSelect');
-        select.innerHTML = data.map(p => 
-            `<option value="${p.research_project.id}">${p.research_project.title || '未命名'}</option>`
-        ).join('');
-        
-        if (data.length > 0) window.handleProjectChange(data[0].research_project.id);
     }
 
-    window.handleProjectChange = async (projectId) => {
-        if (!projectId) return;
-        // 同步修正問卷關聯抓取
-        const { data: quest } = await supabase
-            .from('questionnaire')
-            .select('id, title, research_project!inner(title)')
-            .eq('research_id', projectId)
-            .single();
+    // 2. 載入對應研究案的問卷與統計
+    async function loadProjectData(projectId) {
+        // 對齊 Schema: questionnaire.research_id
+        const { data: quest } = await supabase.from('questionnaire').select('id, title').eq('research_id', projectId).single();
+        if (!quest) return;
+        currentQuestId = quest.id;
+        document.getElementById('displayTitle').innerText = quest.title;
 
-        if (quest) {
-            currentQuestionnaireId = quest.id;
-            document.getElementById('currentProjectTitle').innerText = `${quest.research_project.title} - 管理後台`;
-            loadDashboard();
-        }
-    };
+        // 對齊 Schema: respondent.tts_count, abandoned
+        const { data: resp } = await supabase.from('respondent').select('*, response(count)').eq('questionnaire_id', quest.id);
+        
+        document.getElementById('countTotal').innerText = resp.length;
+        document.getElementById('countDone').innerText = resp.filter(r => !r.abandoned).length;
+        const totalTts = resp.reduce((sum, r) => sum + (r.tts_count || 0), 0);
+        document.getElementById('avgTts').innerText = resp.length > 0 ? (totalTts / resp.length).toFixed(1) : 0;
 
-    async function loadDashboard() {
-        if (!currentQuestionnaireId) return;
-        const { data: respondents } = await supabase
-            .from('respondent')
-            .select('*, response(count)')
-            .eq('questionnaire_id', currentQuestionnaireId)
-            .order('start_time', { ascending: false });
-
-        if (!respondents) return;
-        document.getElementById('totalRespondents').innerText = respondents.length;
-        document.getElementById('completedCount').innerText = respondents.filter(r => !r.abandoned).length;
-        document.getElementById('pendingCount').innerText = respondents.filter(r => r.abandoned).length;
-
-        document.getElementById('respondentTable').innerHTML = respondents.map(r => `
+        document.getElementById('respondentList').innerHTML = resp.map(r => `
             <tr>
-                <td><code>${r.id.substring(0, 8)}</code></td>
-                <td>${r.device_type === 'mobile' ? '📱' : '💻'}</td>
-                <td>${r.start_time ? new Date(r.start_time).toLocaleString() : 'N/A'}</td>
-                <td>${r.response ? r.response[0].count : 0} / 96</td>
-                <td><span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">${r.abandoned ? '填答中' : '已完成'}</span></td>
+                <td><code>${r.id.substring(0,8)}</code></td>
+                <td>${r.device_type}</td>
+                <td>${r.tts_count || 0} 次</td>
+                <td>${r.abandoned ? '❌ 流失' : '✅ 完成'}</td>
+                <td>${r.response ? r.response[0].count : 0} 題</td>
             </tr>
         `).join('');
     }
 
-    // SPSS 匯出按鈕邏輯
-    document.getElementById('btnExport').onclick = async () => {
-        if (!currentQuestionnaireId) return;
-        const btn = document.getElementById('btnExport');
-        btn.innerText = "處理中...";
+    // 3. 匯出 CSV (對齊 answer_value)
+    document.getElementById('exportCsv').onclick = async () => {
+        // 抓取題目清單
+        const { data: qData } = await supabase.from('question').select('id, question_text, order_index').order('order_index');
+        // 抓取受試者與答案 (對齊 answer_value)
+        const { data: rData } = await supabase.from('respondent').select(`*, response(question_id, answer_value)`).eq('questionnaire_id', currentQuestId);
 
-        const { data: qData } = await supabase.from('question_block').select(`question(id, question_text, order_index)`).eq('questionnaire_id', currentQuestionnaireId);
-        let allQuestions = [];
-        qData.forEach(b => allQuestions.push(...b.question));
-        allQuestions.sort((a,b) => a.order_index - b.order_index);
-
-        const { data: rData } = await supabase.from('respondent').select(`id, device_type, start_time, abandoned, response(question_id, answer_value)`).eq('questionnaire_id', currentQuestionnaireId);
-
-        let csvContent = "\ufeff受試者ID,裝置,開始時間,狀態," + allQuestions.map(q => `Q${q.order_index}`).join(",") + "\n";
+        let csv = "\ufeffID,裝置,點讀總數,狀態," + qData.map(q => `Q${q.order_index}`).join(",") + "\n";
         rData.forEach(r => {
-            const row = [r.id, r.device_type, r.start_time, r.abandoned ? "填答中" : "完成"];
-            allQuestions.forEach(q => {
+            let row = [r.id, r.device_type, r.tts_count, r.abandoned ? "流失" : "完成"];
+            qData.forEach(q => {
                 const ans = r.response.find(a => a.question_id === q.id);
-                row.push(ans ? `"${ans.answer_value.replace(/"/g, '""')}"` : "");
+                row.push(ans ? `"${ans.answer_value}"` : "");
             });
-            csvContent += row.join(",") + "\n";
+            csv += row.join(",") + "\n";
         });
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `睡眠研究數據_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-        btn.innerText = "📥 匯出 SPSS 格式 (CSV)";
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `睡眠研究數據_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
     };
 
     window.handleLogout = async () => { await supabase.auth.signOut(); window.location.href = 'login.html'; };
-    checkAuth();
+    init();
 </script>
 </body>
 </html>
