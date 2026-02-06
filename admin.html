@@ -14,7 +14,6 @@
         .table-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; }
         .user-info { font-size: 0.85rem; color: #bdc3c7; margin-bottom: 10px; }
-        /* 確保選單樣式明顯 */
         .project-selector { background: #3e4451; color: white; border: 1px solid #57606f; font-size: 0.9rem; padding: 10px; border-radius: 8px; width: 100%; margin: 15px 0; cursor: pointer; }
     </style>
 </head>
@@ -83,42 +82,42 @@
     }
 
     async function loadAuthorizedProjects(userId) {
-        // 抓取 project_permission 關聯 project
+        // 根據 Schema：project 使用 'name' 欄位
         const { data, error } = await supabase
             .from('project_permission')
-            .select(`project_id, project:project_id ( id, project_name )`)
+            .select(`project_id, project:project_id ( id, name )`)
             .eq('user_id', userId);
 
         if (error || !data || data.length === 0) {
             console.error("權限抓取失敗:", error);
-            document.getElementById('projectSelect').innerHTML = `<option>無權限</option>`;
+            document.getElementById('projectSelect').innerHTML = `<option value="">無權限</option>`;
             return;
         }
 
         const select = document.getElementById('projectSelect');
-        select.innerHTML = data.map(p => `<option value="${p.project.id}">${p.project.project_name}</option>`).join('');
+        select.innerHTML = data.map(p => `<option value="${p.project.id}">${p.project.name || '未命名專案'}</option>`).join('');
         
-        // 自動切換到第一個
         window.handleProjectChange(data[0].project.id);
     }
 
     window.handleProjectChange = async (projectId) => {
         if (!projectId) return;
         
-        // 抓取問卷 ID
+        // 根據 Schema：questionnaire 使用 'research_id' 關聯 project，project 使用 'name'
         const { data: quest, error } = await supabase
             .from('questionnaire')
-            .select('id, project(project_name)')
-            .eq('project_id', projectId)
+            .select('id, project:research_id(name)')
+            .eq('research_id', projectId)
             .single();
 
         if (error || !quest) {
-            alert("該專案尚未建立問卷，請聯繫管理員。");
+            console.error("問卷抓取失敗:", error);
+            alert("該專案尚未建立問卷或關聯異常。");
             return;
         }
 
         currentQuestionnaireId = quest.id;
-        document.getElementById('currentProjectTitle').innerText = `${quest.project.project_name} - 數據監控`;
+        document.getElementById('currentProjectTitle').innerText = `${quest.project.name} - 數據監控`;
         loadDashboard();
     };
 
@@ -131,7 +130,10 @@
             .eq('questionnaire_id', currentQuestionnaireId)
             .order('start_time', { ascending: false });
 
-        if (error) return;
+        if (error) {
+            console.error("儀表板載入失敗:", error);
+            return;
+        }
 
         document.getElementById('totalRespondents').innerText = respondents.length;
         document.getElementById('completedCount').innerText = respondents.filter(r => !r.abandoned).length;
@@ -142,12 +144,12 @@
             <tr>
                 <td><code>${r.id.substring(0, 8)}</code></td>
                 <td>${r.device_type === 'mobile' ? '📱' : '💻'}</td>
-                <td>${new Date(r.start_time).toLocaleString()}</td>
+                <td>${r.start_time ? new Date(r.start_time).toLocaleString() : 'N/A'}</td>
                 <td>
                     <div class="progress" style="height: 8px; width: 100px; display:inline-flex; margin-right: 5px;">
-                        <div class="progress-bar bg-info" style="width: ${(r.response[0].count / 96 * 100)}%"></div>
+                        <div class="progress-bar bg-info" style="width: ${((r.response ? r.response[0].count : 0) / 96 * 100)}%"></div>
                     </div>
-                    <small>${r.response[0].count} / 96</small>
+                    <small>${r.response ? r.response[0].count : 0} / 96</small>
                 </td>
                 <td><span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">${r.abandoned ? '填答中' : '已完成'}</span></td>
             </tr>
