@@ -11,22 +11,9 @@ let questions = [];
 let currentIndex = 0;
 let respondentId = null;
 let currentAnswer = null;
+let questionStartTime = null; // 用於計算反應時間
 
-// 字體調整函數
-window.adjustFontSize = (delta) => {
-    const body = document.body;
-    const currentSize = parseFloat(window.getComputedStyle(body).fontSize);
-    body.style.fontSize = (currentSize + delta) + "px";
-};
-
-// 選項選取邏輯 (針對 Radio 類型)
-window.selectOption = (el, val) => {
-    document.querySelectorAll('.opt-item').forEach(item => item.classList.remove('selected'));
-    el.classList.add('selected');
-    currentAnswer = val;
-};
-
-// 1. 初始化受試者
+// 1. 初始化受試者 (對齊 respondent 欄位)
 async function initRespondent() {
     const { data, error } = await supabase
         .from('respondent')
@@ -34,18 +21,20 @@ async function initRespondent() {
             questionnaire_id: QUESTIONNAIRE_ID,
             device_type: window.innerWidth < 768 ? 'mobile' : 'desktop',
             start_time: new Date().toISOString(),
-            abandoned: true 
+            abandoned: true,
+            tts_count: 0 // 根據 Schema 預設為 0
         }])
         .select();
 
     if (data && data.length > 0) {
         respondentId = data[0].id;
     } else {
-        console.error("無法建立受試者紀錄:", error);
+        console.error("無法建立受試者紀錄:", error?.message);
+        alert("系統連線異常，請重新整理頁面。");
     }
 }
 
-// 2. 抓取題目
+// 2. 抓取題目 (對齊 question_block 與 question 欄位)
 async function fetchQuestions() {
     const { data, error } = await supabase
         .from('question_block')
@@ -65,15 +54,13 @@ async function fetchQuestions() {
         .order('order_index', { ascending: true });
 
     if (error || !data) {
-        console.error("讀取題目失敗:", error);
-        document.getElementById('app').innerHTML = `<div style="padding:20px;">讀取失敗，請確認資料庫設定。</div>`;
+        console.error("讀取題目失敗:", error?.message);
         return;
     }
 
     questions = [];
     data.forEach(block => {
         if (block.question) {
-            // 確保區塊內的題目也按順序排好
             const blockQuestions = block.question.sort((a, b) => a.order_index - b.order_index);
             blockQuestions.forEach(q => {
                 questions.push({
@@ -85,18 +72,15 @@ async function fetchQuestions() {
         }
     });
 
-    if (questions.length === 0) {
-        document.getElementById('app').innerHTML = `<div style="padding:20px;">此問卷目前沒有題目資料。</div>`;
-    } else {
-        renderQuestion();
-    }
+    if (questions.length > 0) renderQuestion();
 }
 
-// 3. 渲染題目邏輯
+// 3. 渲染題目與紀錄開始時間
 function renderQuestion() {
     const q = questions[currentIndex];
     const app = document.getElementById('app');
-    currentAnswer = null; 
+    currentAnswer = null;
+    questionStartTime = Date.now(); // 紀錄本題開始時間
     
     app.innerHTML = `
         <div class="survey-container">
@@ -121,10 +105,8 @@ function renderQuestion() {
     document.getElementById('nextBtn').onclick = handleNext;
 }
 
-// 4. 關鍵：根據題型渲染選項
 function renderOptions(q) {
-    // 只有當題型是 radio 且 options 是陣列時，才渲染按鈕
-    if (q.question_type === 'radio' && Array.isArray(q.options) && q.options.length > 0) {
+    if (q.question_type === 'radio' && Array.isArray(q.options)) {
         return q.options.map((opt, i) => `
             <div class="opt-item" onclick="window.selectOption(this, '${opt}')">
                 <span class="opt-label">${String.fromCharCode(65 + i)}</span>
@@ -132,60 +114,49 @@ function renderOptions(q) {
             </div>
         `).join('');
     } 
-    
-    // 其他情況（如 text, textarea 或 question_type 為空）一律顯示文字輸入框
-    return `
-        <div class="input-container">
-            <input type="text" class="text-input" id="textAns" placeholder="請在此輸入答案..." autocomplete="off">
-        </div>
-    `;
+    return `<div class="input-container"><input type="text" class="text-input" id="textAns" placeholder="請在此輸入答案..." autocomplete="off"></div>`;
 }
 
-// 5. 下一題邏輯
+// 4. 下一題與寫入答案 (對齊 response.answer_value 與 reaction_time_sec)
 async function handleNext() {
     const q = questions[currentIndex];
     let finalAnswer = currentAnswer;
+    const reactionTime = (Date.now() - questionStartTime) / 1000; // 計算反應秒數
 
-    // 判斷是否為輸入框題型
     const textInput = document.getElementById('textAns');
-    if (textInput) {
-        finalAnswer = textInput.value.trim();
-        if (!finalAnswer) {
-            alert("請輸入內容後再繼續");
-            return;
-        }
-    } else {
-        // 如果是選擇題但沒選答案
-        if (finalAnswer === null) {
-            alert("請選擇一個選項");
-            return;
-        }
+    if (textInput) finalAnswer = textInput.value.trim();
+
+    if (!finalAnswer) {
+        alert("請完成本題再繼續");
+        return;
     }
 
-    // 存入 response 表
     if (respondentId) {
-        await supabase.from('response').insert([{
+        // 對齊 Schema: answer_value, reaction_time_sec
+        const { error } = await supabase.from('response').insert([{
             respondent_id: respondentId,
             question_id: q.id,
-            answer_value: finalAnswer
+            answer_value: String(finalAnswer),
+            reaction_time_sec: Math.round(reactionTime) 
         }]);
+        if (error) console.error("答案儲存失敗:", error.message);
     }
 
     currentIndex++;
     if (currentIndex < questions.length) {
         renderQuestion();
     } else {
-        // 完成問卷
-        await supabase.from('respondent').update({ abandoned: false }).eq('id', respondentId);
-        document.getElementById('app').innerHTML = `
-            <div class="finish-card">
-                <h2>感謝您的填答！</h2>
-                <p>您的資料已成功送出。</p>
-            </div>`;
+        // 完成問卷: 更新 abandoned 狀態
+        await supabase.from('respondent').update({ 
+            abandoned: false,
+            end_time: new Date().toISOString() 
+        }).eq('id', respondentId);
+
+        document.getElementById('app').innerHTML = `<div class="finish-card"><h2>感謝您的填答！</h2></div>`;
     }
 }
 
-// 啟動流程
+// 啟動
 (async () => {
     await initRespondent();
     await fetchQuestions();

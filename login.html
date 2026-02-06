@@ -34,10 +34,23 @@
 
     const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
 
+    // 啟動時自動檢查：如果已經登入，直接去後台
+    (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            window.location.href = 'admin.html';
+        }
+    })();
+
     document.getElementById('btnLogin').onclick = async () => {
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
         const errMsg = document.getElementById('errMsg');
+        const btn = document.getElementById('btnLogin');
+
+        // 防止重複點擊
+        btn.disabled = true;
+        btn.innerText = "驗證中...";
 
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email,
@@ -47,8 +60,10 @@
         if (error) {
             errMsg.innerText = "登入失敗：" + error.message;
             errMsg.style.display = 'block';
+            btn.disabled = false;
+            btn.innerText = "登入系統";
         } else {
-            // 登入成功，將 Session 資訊存入瀏覽器並跳轉
+            // 登入成功
             window.location.href = 'admin.html';
         }
     };

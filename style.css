@@ -120,3 +120,35 @@
     outline: none;
     background: #f0f5ff;
 }
+
+/* 語音按鈕樣式 */
+.audio-section {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+.audio-btn {
+    background: #f1f5f9;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: 0.2s;
+}
+
+.audio-btn:hover {
+    background: #e2e8f0;
+}
+
+/* 完成卡片 */
+.finish-card {
+    text-align: center;
+    background: white;
+    padding: 60px;
+    border-radius: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    max-width: 500px;
+    margin: 100px auto;
+}
