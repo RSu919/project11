@@ -105,18 +105,20 @@
     }
 
     async function loadAuthorizedProjects(userId) {
-        // 修正重點 1：將 select 指向 research_project
+        // 修正 1: 確保查詢研究計畫的關聯名稱正確
         const { data, error } = await supabase
             .from('project_permission')
             .select(`project_id, research_project ( id, name )`)
             .eq('user_id', userId);
 
         if (error || !data || data.length === 0) {
+            console.error("權限查詢出錯:", error);
             document.getElementById('projectSelect').innerHTML = `<option value="">無權限</option>`;
             return;
         }
 
-        const validData = data.filter(item => item.project !== null);
+        // 修正 2: 這裡物件 Key 會是 research_project 而非 project
+        const validData = data.filter(item => item.research_project !== null);
 
         if (validData.length === 0) {
             document.getElementById('projectSelect').innerHTML = `<option value="">無有效研究案</option>`;
@@ -124,17 +126,21 @@
         }
 
         const select = document.getElementById('projectSelect');
-        select.innerHTML = validData.map(p => `<option value="${p.project.id}">${p.project.name || '未命名'}</option>`).join('');
+        select.innerHTML = validData.map(p => 
+            `<option value="${p.research_project.id}">${p.research_project.name || '未命名'}</option>`
+        ).join('');
         
-        window.handleProjectChange(validData[0].project.id);
+        // 預設載入第一個專案
+        window.handleProjectChange(validData[0].research_project.id);
     }
 
     window.handleProjectChange = async (projectId) => {
         if (!projectId) return;
-        // 修正重點 2：將專案關聯指向 research_project
+        
+        // 修正 3: 同步修正問卷與研究計畫的關聯查詢
         const { data: quest, error } = await supabase
             .from('questionnaire')
-            .select('id, project:research_project(name)')
+            .select('id, research_project ( name )')
             .eq('research_id', projectId)
             .single();
 
@@ -143,8 +149,9 @@
             alert("找不到對應問卷。"); 
             return; 
         }
+        
         currentQuestionnaireId = quest.id;
-        document.getElementById('currentProjectTitle').innerText = `${quest.project.name} - 管理後台`;
+        document.getElementById('currentProjectTitle').innerText = `${quest.research_project.name} - 管理後台`;
         loadDashboard();
     };
 
