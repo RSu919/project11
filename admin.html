@@ -108,7 +108,7 @@
         // 修正重點 1：將 select 指向 research_project
         const { data, error } = await supabase
             .from('project_permission')
-            .select(`project_id, project:research_project ( id, name )`)
+            .select(`project_id, research_project ( id, name )`)
             .eq('user_id', userId);
 
         if (error || !data || data.length === 0) {
