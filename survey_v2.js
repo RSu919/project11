@@ -40,7 +40,6 @@ async function loadSurveyData() {
 }
 
 function renderPage() {
-    // 建立線性時間軸計算正確題號
     const sortedTimeline = [];
     const sortedBlocks = [...blocks].sort((a, b) => a.order_index - b.order_index);
     
@@ -63,7 +62,12 @@ function renderPage() {
     const progressPercent = (currentQCount / totalQ) * 100;
 
     pageStartTime = Date.now();
-    const isTextInput = !q.options || q.options.length === 0 || q.options.some(opt => opt.includes("文字") || opt.includes("輸入")) || q.question_text.includes("姓名") || q.question_text.includes("年齡");
+
+    // --- 關鍵修正處 ---
+    // 只有在真的沒有選項，或者選項包含"文字"字眼時，才視為文字輸入。
+    // 並且排除了"年齡"關鍵字對是非題的干擾，只針對"您的年齡"這類題目進行文字判斷。
+    const isTextInput = (!q.options || q.options.length === 0 || q.options.some(opt => opt.includes("文字") || opt.includes("輸入"))) || 
+                       (q.question_text === "您的姓名" || q.question_text === "您的年齡");
 
     app.innerHTML = `
         <div class="survey-container">
@@ -71,7 +75,7 @@ function renderPage() {
             <div class="progress-text">Question ${currentQCount} / ${totalQ}</div>
             <div class="question-box">
                 <div class="block-tag">${block.block_name}</div>
-                <h2 class="question-text">${q.question_text}</h2>
+                <h2 class="question-text" style="white-space: pre-wrap;">${q.question_text}</h2>
                 <div class="audio-section">
                     <button class="audio-btn" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 1.0, '${q.id}')">🔊 正常</button>
                     <button class="audio-btn slow" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 0.5, '${q.id}')">🐢 慢速</button>
@@ -122,7 +126,7 @@ window.nextPage = async () => {
         } else if (currentBlockIndex < blocks.length - 1) {
             if (block.encouragement_text) alert(block.encouragement_text);
             currentBlockIndex++;
-            currentQuestionIndexInBlock = 0; // 跨區塊重置索引
+            currentQuestionIndexInBlock = 0; 
         } else {
             await supabase.from("respondent").update({ abandoned: false, end_time: new Date().toISOString() }).eq("id", respondentId);
             app.innerHTML = `<div class="finish-card"><h2>🎉 完成</h2><p>感謝您的參與。</p></div>`;
