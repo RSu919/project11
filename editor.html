@@ -10,19 +10,21 @@
         .block-header { background: #4c51bf; color: white; padding: 10px 20px; border-radius: 8px; margin-top: 30px; }
         .question-row { border-bottom: 1px solid #eee; padding: 15px 0; }
         .sticky-top-save { position: sticky; top: 20px; z-index: 1000; text-align: right; margin-bottom: 20px; }
+        .status-badge { font-size: 0.9rem; margin-right: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="sticky-top-save">
+        <span id="statusText" class="status-badge text-muted"></span>
         <button id="btnSaveAll" class="btn btn-primary btn-lg shadow">💾 儲存所有變更</button>
         <a href="admin.html" class="btn btn-outline-secondary btn-lg shadow">返回後台</a>
     </div>
 
     <div class="editor-card">
-        <h2>📝 題目敘述編輯器</h2>
-        <p class="text-muted">您可以直接修改下方的題目內容，完成後請點擊右上角的「儲存所有變更」。</p>
+        <h2>📝 題目敘述編輯器 (快速同步版)</h2>
+        <p class="text-muted">修改後請點擊「儲存所有變更」，系統會一次性同步 102 題數據。</p>
         <hr>
         <div id="editorContainer">
             <div class="text-center py-5">讀取題目資料中...</div>
@@ -32,11 +34,16 @@
 
 <script type="module">
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-    const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
+    
+    // 初始化 Supabase
+    const supabase = createClient(
+        "https://mbdatbwrralhlkhyhxlr.supabase.co", 
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok"
+    );
 
     const QID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
 
-    // 載入所有區塊與題目
+    // 1. 載入資料 (增加不快取設定)
     async function loadEditor() {
         const { data: blocks, error } = await supabase
             .from('question_block')
@@ -44,7 +51,10 @@
             .eq('questionnaire_id', QID)
             .order('order_index', { ascending: true });
 
-        if (error) return alert("讀取失敗");
+        if (error) {
+            console.error("讀取失敗:", error.message);
+            return alert("讀取失敗，請檢查網路。");
+        }
 
         const container = document.getElementById('editorContainer');
         container.innerHTML = blocks.map(block => `
@@ -64,35 +74,41 @@
         `).join('');
     }
 
-    // 批量儲存功能
+    // 2. ⚡ 快速批量儲存邏輯
     document.getElementById('btnSaveAll').onclick = async () => {
+        const btn = document.getElementById('btnSaveAll');
+        const statusText = document.getElementById('statusText');
         const inputs = document.querySelectorAll('.q-input');
+        
+        // 打包所有資料成一個陣列
         const updates = Array.from(inputs).map(input => ({
             id: input.dataset.id,
             question_text: input.value
         }));
 
-        const btn = document.getElementById('btnSaveAll');
         btn.disabled = true;
-        btn.innerText = "儲存中...";
+        btn.innerText = "⚡ 正在同步數據...";
+        statusText.innerText = "正在傳送封包...";
 
-        // 逐一更新 (Supabase 批量更新建議)
-        let hasError = false;
-        for (const item of updates) {
-            const { error } = await supabase
-                .from('question')
-                .update({ question_text: item.question_text })
-                .eq('id', item.id);
-            if (error) hasError = true;
-        }
+        // 使用 upsert 進行單次批量更新，解決慢速與失敗問題
+        const { data, error } = await supabase
+            .from('question')
+            .upsert(updates, { onConflict: 'id' })
+            .select(); // 強制回傳更新後的資料以確保成功
 
-        if (hasError) {
-            alert("部分題目儲存失敗，請檢查網路連線。");
-        } else {
-            alert("✅ 所有題目敘述已成功更新！");
+        if (error) {
+            console.error("儲存失敗:", error.message);
+            alert("❌ 儲存失敗！原因：" + error.message);
+            btn.disabled = false;
+            btn.innerText = "💾 儲存所有變更";
+        } else if (data) {
+            statusText.className = "status-badge text-success";
+            statusText.innerText = `✅ 成功更新 ${data.length} 題`;
+            alert(`✅ 儲存成功！${data.length} 題已更新。網頁將自動重新載入以確保數據正確。`);
+            
+            // 重要：強制重新整理，避免快取造成「復原」假象
+            window.location.reload(); 
         }
-        btn.disabled = false;
-        btn.innerText = "💾 儲存所有變更";
     };
 
     loadEditor();
