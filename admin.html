@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研究管理後台 - 睡眠與介面研究</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        :root { --primary-color: #4a69bd; }
+        body { background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .sidebar { background: #2f3542; color: white; min-height: 100vh; padding: 20px; }
+        .main-content { padding: 30px; }
+        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .table-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-2 sidebar">
+            <h3>Admin Panel</h3>
+            <hr>
+            <ul class="nav flex-column">
+                <li class="nav-item mb-2"><a href="#" class="nav-link text-white active">📊 數據概覽</a></li>
+                <li class="nav-item mb-2"><a href="#" class="nav-link text-white">📝 題目管理 (開發中)</a></li>
+                <li class="nav-item mb-2"><a href="#" class="nav-link text-white">⚙️ 研究案設定</a></li>
+            </ul>
+        </div>
+
+        <div class="col-md-10 main-content">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>數據監控儀表板</h2>
+                <button class="btn btn-success" id="btnExport">📥 匯出 SPSS 格式 (CSV)</button>
+            </div>
+
+            <div class="row mb-4" id="statsRow">
+                <div class="col-md-4">
+                    <div class="stat-card">
+                        <h6>總參與人數</h6>
+                        <h2 id="totalRespondents">-</h2>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card">
+                        <h6>已完成問卷</h6>
+                        <h2 class="text-success" id="completedCount">-</h2>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card">
+                        <h6>填答中 / 已流失</h6>
+                        <h2 class="text-warning" id="pendingCount">-</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h5>受試者即時動態</h5>
+                <table class="table table-hover mt-3">
+                    <thead class="table-light">
+                        <tr>
+                            <th>受試者 ID (縮寫)</th>
+                            <th>裝置</th>
+                            <th>開始時間</th>
+                            <th>填答進度</th>
+                            <th>狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody id="respondentTable">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+    const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
+    const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
+
+    async function loadDashboard() {
+        // 1. 抓取受試者摘要
+        const { data: respondents, error } = await supabase
+            .from('respondent')
+            .select('*, response(count)')
+            .eq('questionnaire_id', QUESTIONNAIRE_ID)
+            .order('start_time', { ascending: false });
+
+        if (error) return;
+
+        // 2. 更新圖卡
+        const total = respondents.length;
+        const completed = respondents.filter(r => !r.abandoned).length;
+        document.getElementById('totalRespondents').innerText = total;
+        document.getElementById('completedCount').innerText = completed;
+        document.getElementById('pendingCount').innerText = total - completed;
+
+        // 3. 渲染表格
+        const tbody = document.getElementById('respondentTable');
+        tbody.innerHTML = respondents.map(r => `
+            <tr>
+                <td><code>${r.id.substring(0, 8)}...</code></td>
+                <td>${r.device_type === 'mobile' ? '📱 手機' : '💻 平板/電腦'}</td>
+                <td>${new Date(r.start_time).toLocaleString()}</td>
+                <td>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-info" style="width: ${(r.response[0].count / 96 * 100)}%"></div>
+                    </div>
+                    <small>${r.response[0].count} / 96 題</small>
+                </td>
+                <td>
+                    <span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">
+                        ${r.abandoned ? '填答中' : '已完成'}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // 匯出 CSV 邏輯 (SPSS 友善格式預算)
+    document.getElementById('btnExport').onclick = async () => {
+        alert("正在準備 SPSS 寬格式數據，這可能需要一點時間...");
+        // 這裡後續會加入「長轉寬」的 API 邏輯
+    };
+
+    loadDashboard();
+</script>
+</body>
+</html>
