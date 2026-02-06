@@ -12,7 +12,7 @@
         .main-content { padding: 30px; }
         .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .table-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
-        .project-selector { background: #3e4451; color: white; border: 1px solid #57606f; padding: 10px; border-radius: 8px; width: 100%; margin: 15px 0; }
+        .project-selector { background: #3e4451; color: white; border: 1px solid #57606f; padding: 10px; border-radius: 8px; width: 100%; margin: 15px 0; cursor: pointer; }
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; }
         .nav-link { cursor: pointer; color: white; text-decoration: none; display: block; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
         .nav-link.active { background: var(--primary-color); }
@@ -25,7 +25,7 @@
         <div class="col-md-2 sidebar">
             <h3>Admin Panel</h3>
             <div id="userInfo" class="small text-muted mb-3">驗證中...</div>
-            <label class="small text-muted">目前研究案：</label>
+            <label class="small text-muted">目前切換研究案：</label>
             <select id="projectSelect" class="project-selector" onchange="window.handleProjectChange(this.value)">
                 <option value="">載入中...</option>
             </select>
@@ -45,12 +45,12 @@
             <div id="section-stats">
                 <div class="row mb-4">
                     <div class="col-md-4"><div class="stat-card"><h6>總參與人數</h6><h2 id="totalRespondents">-</h2></div></div>
-                    <div class="col-md-4"><div class="stat-card"><h6>已完成</h6><h2 class="text-success" id="completedCount">-</h2></div></div>
+                    <div class="col-md-4"><div class="stat-card"><h6>已完成問卷</h6><h2 class="text-success" id="completedCount">-</h2></div></div>
                     <div class="col-md-4"><div class="stat-card"><h6>填答中 / 流失</h6><h2 class="text-warning" id="pendingCount">-</h2></div></div>
                 </div>
                 <div class="table-container">
-                    <h5>受試者即時名單</h5>
-                    <table class="table mt-3">
+                    <h5>受試者即時動態</h5>
+                    <table class="table table-hover mt-3">
                         <thead class="table-light">
                             <tr><th>受試者 ID</th><th>裝置</th><th>開始時間</th><th>填答進度</th><th>狀態</th></tr>
                         </thead>
@@ -76,66 +76,48 @@
         loadAuthorizedProjects(session.user.id);
     }
 
-    // 核心修正：加入強化的別名對齊邏輯
     async function loadAuthorizedProjects(userId) {
-        // 使用研究計畫的表名作為關聯
+        // 修正重點：欄位名稱由 name 改為您截圖確認過的 title
         const { data, error } = await supabase
             .from('project_permission')
             .select(`
                 project_id,
-                research_project!inner ( id, name )
+                research_project!inner ( id, title )
             `)
             .eq('user_id', userId);
 
         if (error) {
-            console.error("400 錯誤詳情:", error);
-            // 如果 400 依舊存在，代表 SDK 還是認不得 research_project 這個路徑
-            // 我們會在此 fallback 到更安全的兩階段抓取
-            fallbackLoadProjects(userId);
+            console.error("抓取專案失敗:", error);
+            document.getElementById('projectSelect').innerHTML = `<option>錯誤: ${error.message}</option>`;
             return;
         }
 
-        renderProjectList(data);
-    }
-
-    // 當自動關聯失敗時的救援方案
-    async function fallbackLoadProjects(userId) {
-        const { data: permissions } = await supabase.from('project_permission').select('project_id').eq('user_id', userId);
-        if (!permissions || permissions.length === 0) return;
-        
-        const ids = permissions.map(p => p.project_id);
-        const { data: projects } = await supabase.from('research_project').select('id, name').in('id', ids);
-        
-        if (projects) {
-            renderProjectList(projects.map(p => ({ research_project: p })));
-        }
-    }
-
-    function renderProjectList(validData) {
         const select = document.getElementById('projectSelect');
-        select.innerHTML = validData.map(p => 
-            `<option value="${p.research_project.id}">${p.research_project.name}</option>`
+        select.innerHTML = data.map(p => 
+            `<option value="${p.research_project.id}">${p.research_project.title || '未命名'}</option>`
         ).join('');
         
-        if (validData.length > 0) window.handleProjectChange(validData[0].research_project.id);
+        if (data.length > 0) window.handleProjectChange(data[0].research_project.id);
     }
 
     window.handleProjectChange = async (projectId) => {
         if (!projectId) return;
+        // 同步修正問卷關聯抓取
         const { data: quest } = await supabase
             .from('questionnaire')
-            .select('id, title')
+            .select('id, title, research_project!inner(title)')
             .eq('research_id', projectId)
             .single();
 
         if (quest) {
             currentQuestionnaireId = quest.id;
-            document.getElementById('currentProjectTitle').innerText = quest.title;
+            document.getElementById('currentProjectTitle').innerText = `${quest.research_project.title} - 管理後台`;
             loadDashboard();
         }
     };
 
     async function loadDashboard() {
+        if (!currentQuestionnaireId) return;
         const { data: respondents } = await supabase
             .from('respondent')
             .select('*, response(count)')
@@ -151,16 +133,45 @@
             <tr>
                 <td><code>${r.id.substring(0, 8)}</code></td>
                 <td>${r.device_type === 'mobile' ? '📱' : '💻'}</td>
-                <td>${new Date(r.start_time).toLocaleString()}</td>
-                <td>${r.response ? r.response[0].count : 0} 題</td>
+                <td>${r.start_time ? new Date(r.start_time).toLocaleString() : 'N/A'}</td>
+                <td>${r.response ? r.response[0].count : 0} / 96</td>
                 <td><span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">${r.abandoned ? '填答中' : '已完成'}</span></td>
             </tr>
         `).join('');
     }
 
+    // SPSS 匯出按鈕邏輯
+    document.getElementById('btnExport').onclick = async () => {
+        if (!currentQuestionnaireId) return;
+        const btn = document.getElementById('btnExport');
+        btn.innerText = "處理中...";
+
+        const { data: qData } = await supabase.from('question_block').select(`question(id, question_text, order_index)`).eq('questionnaire_id', currentQuestionnaireId);
+        let allQuestions = [];
+        qData.forEach(b => allQuestions.push(...b.question));
+        allQuestions.sort((a,b) => a.order_index - b.order_index);
+
+        const { data: rData } = await supabase.from('respondent').select(`id, device_type, start_time, abandoned, response(question_id, answer_value)`).eq('questionnaire_id', currentQuestionnaireId);
+
+        let csvContent = "\ufeff受試者ID,裝置,開始時間,狀態," + allQuestions.map(q => `Q${q.order_index}`).join(",") + "\n";
+        rData.forEach(r => {
+            const row = [r.id, r.device_type, r.start_time, r.abandoned ? "填答中" : "完成"];
+            allQuestions.forEach(q => {
+                const ans = r.response.find(a => a.question_id === q.id);
+                row.push(ans ? `"${ans.answer_value.replace(/"/g, '""')}"` : "");
+            });
+            csvContent += row.join(",") + "\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `睡眠研究數據_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        btn.innerText = "📥 匯出 SPSS 格式 (CSV)";
+    };
+
     window.handleLogout = async () => { await supabase.auth.signOut(); window.location.href = 'login.html'; };
-    
-    // 初始化
     checkAuth();
 </script>
 </body>
