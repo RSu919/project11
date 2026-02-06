@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>研究題目編輯器</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body { background-color: #f8f9fa; padding: 40px; }
+        .editor-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        .block-header { background: #4c51bf; color: white; padding: 10px 20px; border-radius: 8px; margin-top: 30px; }
+        .question-row { border-bottom: 1px solid #eee; padding: 15px 0; }
+        .sticky-top-save { position: sticky; top: 20px; z-index: 1000; text-align: right; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sticky-top-save">
+        <button id="btnSaveAll" class="btn btn-primary btn-lg shadow">💾 儲存所有變更</button>
+        <a href="admin.html" class="btn btn-outline-secondary btn-lg shadow">返回後台</a>
+    </div>
+
+    <div class="editor-card">
+        <h2>📝 題目敘述編輯器</h2>
+        <p class="text-muted">您可以直接修改下方的題目內容，完成後請點擊右上角的「儲存所有變更」。</p>
+        <hr>
+        <div id="editorContainer">
+            <div class="text-center py-5">讀取題目資料中...</div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+    const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
+
+    const QID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
+
+    // 載入所有區塊與題目
+    async function loadEditor() {
+        const { data: blocks, error } = await supabase
+            .from('question_block')
+            .select(`id, title, question(id, question_text, order_index)`)
+            .eq('questionnaire_id', QID)
+            .order('order_index', { ascending: true });
+
+        if (error) return alert("讀取失敗");
+
+        const container = document.getElementById('editorContainer');
+        container.innerHTML = blocks.map(block => `
+            <div class="block-header">區塊：${block.title}</div>
+            <div class="p-3">
+                ${block.question.sort((a,b) => a.order_index - b.order_index).map(q => `
+                    <div class="row question-row align-items-center">
+                        <div class="col-md-1 text-muted">#${q.order_index}</div>
+                        <div class="col-md-11">
+                            <input type="text" class="form-control q-input" 
+                                   data-id="${q.id}" 
+                                   value="${q.question_text}">
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
+    }
+
+    // 批量儲存功能
+    document.getElementById('btnSaveAll').onclick = async () => {
+        const inputs = document.querySelectorAll('.q-input');
+        const updates = Array.from(inputs).map(input => ({
+            id: input.dataset.id,
+            question_text: input.value
+        }));
+
+        const btn = document.getElementById('btnSaveAll');
+        btn.disabled = true;
+        btn.innerText = "儲存中...";
+
+        // 逐一更新 (Supabase 批量更新建議)
+        let hasError = false;
+        for (const item of updates) {
+            const { error } = await supabase
+                .from('question')
+                .update({ question_text: item.question_text })
+                .eq('id', item.id);
+            if (error) hasError = true;
+        }
+
+        if (hasError) {
+            alert("部分題目儲存失敗，請檢查網路連線。");
+        } else {
+            alert("✅ 所有題目敘述已成功更新！");
+        }
+        btn.disabled = false;
+        btn.innerText = "💾 儲存所有變更";
+    };
+
+    loadEditor();
+</script>
+</body>
+</html>
