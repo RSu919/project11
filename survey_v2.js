@@ -10,10 +10,31 @@ const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
 let questions = [];
 let currentIndex = 0;
 let respondentId = null;
-let currentAnswer = null;
+let currentAnswer = null; // 用於儲存單選題答案
 let questionStartTime = null; // 用於計算反應時間
 
-// 1. 初始化受試者 (對齊 respondent 欄位)
+// --- 全域工具函數 ---
+
+// 字體調整
+window.adjustFontSize = (delta) => {
+    const body = document.body;
+    const currentSize = parseFloat(window.getComputedStyle(body).fontSize);
+    body.style.fontSize = (currentSize + delta) + "px";
+};
+
+[cite_start]// 選項選取邏輯：確保點擊時能正確儲存答案 [cite: 1]
+window.selectOption = (el, val) => {
+    // 移除其他選項的選取狀態
+    document.querySelectorAll('.opt-item').forEach(item => item.classList.remove('selected'));
+    // 標記目前選項
+    el.classList.add('selected');
+    [cite_start]// 更新暫存答案，這一步沒做 handleNext 就會沒反應 [cite: 1]
+    currentAnswer = val; 
+};
+
+// --- 核心邏輯 ---
+
+[cite_start]// 1. 初始化受試者 (對齊 respondent 欄位) [cite: 1]
 async function initRespondent() {
     const { data, error } = await supabase
         .from('respondent')
@@ -22,7 +43,7 @@ async function initRespondent() {
             device_type: window.innerWidth < 768 ? 'mobile' : 'desktop',
             start_time: new Date().toISOString(),
             abandoned: true,
-            tts_count: 0 // 根據 Schema 預設為 0
+            tts_count: 0 
         }])
         .select();
 
@@ -34,7 +55,7 @@ async function initRespondent() {
     }
 }
 
-// 2. 抓取題目 (對齊 question_block 與 question 欄位)
+[cite_start]// 2. 抓取題目 (對齊 question_block 與 question 欄位) [cite: 1]
 async function fetchQuestions() {
     const { data, error } = await supabase
         .from('question_block')
@@ -75,12 +96,12 @@ async function fetchQuestions() {
     if (questions.length > 0) renderQuestion();
 }
 
-// 3. 渲染題目與紀錄開始時間
+[cite_start]// 3. 渲染題目與紀錄開始時間 [cite: 1]
 function renderQuestion() {
     const q = questions[currentIndex];
     const app = document.getElementById('app');
-    currentAnswer = null;
-    questionStartTime = Date.now(); // 紀錄本題開始時間
+    currentAnswer = null; [cite_start]// 每題開始前重置答案 [cite: 1]
+    questionStartTime = Date.now(); // 紀錄本題呈現的起始時間
     
     app.innerHTML = `
         <div class="survey-container">
@@ -117,22 +138,27 @@ function renderOptions(q) {
     return `<div class="input-container"><input type="text" class="text-input" id="textAns" placeholder="請在此輸入答案..." autocomplete="off"></div>`;
 }
 
-// 4. 下一題與寫入答案 (對齊 response.answer_value 與 reaction_time_sec)
+[cite_start]// 4. 下一題與寫入答案 (對齊 response.answer_value 與 reaction_time_sec) [cite: 1]
 async function handleNext() {
     const q = questions[currentIndex];
     let finalAnswer = currentAnswer;
-    const reactionTime = (Date.now() - questionStartTime) / 1000; // 計算反應秒數
+    const reactionTime = (Date.now() - questionStartTime) / 1000; [cite_start]// 計算反應秒數 [cite: 1]
 
     const textInput = document.getElementById('textAns');
     if (textInput) finalAnswer = textInput.value.trim();
 
     if (!finalAnswer) {
-        alert("請完成本題再繼續");
+        alert("請先完成本題再點擊「下一題」喔！");
         return;
     }
 
+    // 禁用按鈕防止重複點擊
+    const btn = document.getElementById('nextBtn');
+    btn.disabled = true;
+    btn.innerText = "儲存中...";
+
     if (respondentId) {
-        // 對齊 Schema: answer_value, reaction_time_sec
+        [cite_start]// 寫入答案：對齊 Schema 欄位名稱 [cite: 1]
         const { error } = await supabase.from('response').insert([{
             respondent_id: respondentId,
             question_id: q.id,
@@ -146,17 +172,21 @@ async function handleNext() {
     if (currentIndex < questions.length) {
         renderQuestion();
     } else {
-        // 完成問卷: 更新 abandoned 狀態
+        [cite_start]// 完成問卷：更新完測狀態並寫入 end_time [cite: 1]
         await supabase.from('respondent').update({ 
             abandoned: false,
             end_time: new Date().toISOString() 
         }).eq('id', respondentId);
 
-        document.getElementById('app').innerHTML = `<div class="finish-card"><h2>感謝您的填答！</h2></div>`;
+        document.getElementById('app').innerHTML = `
+            <div class="finish-card">
+                <h2>感謝您的填答！</h2>
+                <p>您的研究數據已成功送出。</p>
+            </div>`;
     }
 }
 
-// 啟動
+[cite_start]// 啟動流程 [cite: 1]
 (async () => {
     await initRespondent();
     await fetchQuestions();
