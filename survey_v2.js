@@ -74,7 +74,7 @@ function renderPage() {
                 <h2 class="question-text">${q.question_text}</h2>
                 <div class="audio-section">
                     <button class="audio-btn" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 1.0, '${q.id}')">🔊 正常</button>
-                    <button class="audio-btn slow" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 0.5, '${q.id}')">🐢 龜速</button>
+                    <button class="audio-btn slow" onclick="window.playAudio('${q.question_text.replace(/'/g, "\\'")}', 0.5, '${q.id}')">🐢 慢速</button>
                 </div>
                 <div class="options-list">
                     ${isTextInput ? `<input type="text" class="text-input" value="${answersCache[q.id] || ''}" oninput="window.saveTextAnswer('${q.id}', this.value)" placeholder="請在此輸入...">` : 
