@@ -10,20 +10,18 @@ const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
 let questions = [];
 let currentIndex = 0;
 let respondentId = null;
-let currentAnswer = null; // 紀錄當前選取的答案
+let currentAnswer = null;
 
-// --- [新增] 補齊字體調整函數，避免 index.html 報錯 ---
+// 字體調整函數
 window.adjustFontSize = (delta) => {
     const body = document.body;
     const currentSize = parseFloat(window.getComputedStyle(body).fontSize);
     body.style.fontSize = (currentSize + delta) + "px";
 };
 
-// --- [新增] 選項選取邏輯 ---
+// 選項選取邏輯 (針對 Radio 類型)
 window.selectOption = (el, val) => {
-    // 移除其他選項的選取狀態
     document.querySelectorAll('.opt-item').forEach(item => item.classList.remove('selected'));
-    // 加入選取狀態
     el.classList.add('selected');
     currentAnswer = val;
 };
@@ -47,7 +45,7 @@ async function initRespondent() {
     }
 }
 
-// 2. 抓取題目 (對齊您的真實 Schema)
+// 2. 抓取題目
 async function fetchQuestions() {
     const { data, error } = await supabase
         .from('question_block')
@@ -68,14 +66,16 @@ async function fetchQuestions() {
 
     if (error || !data) {
         console.error("讀取題目失敗:", error);
-        document.getElementById('app').innerHTML = `<div style="padding:20px;">讀取失敗，請確認資料庫中 questionnaire_id 是否正確。</div>`;
+        document.getElementById('app').innerHTML = `<div style="padding:20px;">讀取失敗，請確認資料庫設定。</div>`;
         return;
     }
 
     questions = [];
     data.forEach(block => {
         if (block.question) {
-            block.question.sort((a, b) => a.order_index - b.order_index).forEach(q => {
+            // 確保區塊內的題目也按順序排好
+            const blockQuestions = block.question.sort((a, b) => a.order_index - b.order_index);
+            blockQuestions.forEach(q => {
                 questions.push({
                     ...q,
                     blockTitle: block.title,
@@ -96,7 +96,7 @@ async function fetchQuestions() {
 function renderQuestion() {
     const q = questions[currentIndex];
     const app = document.getElementById('app');
-    currentAnswer = null; // 重設答案
+    currentAnswer = null; 
     
     app.innerHTML = `
         <div class="survey-container">
@@ -121,27 +121,45 @@ function renderQuestion() {
     document.getElementById('nextBtn').onclick = handleNext;
 }
 
+// 4. 關鍵：根據題型渲染選項
 function renderOptions(q) {
-    if (q.question_type === 'radio' && Array.isArray(q.options)) {
+    // 只有當題型是 radio 且 options 是陣列時，才渲染按鈕
+    if (q.question_type === 'radio' && Array.isArray(q.options) && q.options.length > 0) {
         return q.options.map((opt, i) => `
             <div class="opt-item" onclick="window.selectOption(this, '${opt}')">
                 <span class="opt-label">${String.fromCharCode(65 + i)}</span>
                 <span class="opt-text">${opt}</span>
             </div>
         `).join('');
-    }
-    return `<input type="text" class="text-input" id="textAns" placeholder="請輸入答案">`;
+    } 
+    
+    // 其他情況（如 text, textarea 或 question_type 為空）一律顯示文字輸入框
+    return `
+        <div class="input-container">
+            <input type="text" class="text-input" id="textAns" placeholder="請在此輸入答案..." autocomplete="off">
+        </div>
+    `;
 }
 
-// --- [新增] 下一題邏輯 (包含簡易存檔) ---
+// 5. 下一題邏輯
 async function handleNext() {
     const q = questions[currentIndex];
     let finalAnswer = currentAnswer;
 
-    // 如果是填充題，抓取 input 的值
-    if (q.question_type !== 'radio') {
-        const input = document.getElementById('textAns');
-        finalAnswer = input ? input.value : null;
+    // 判斷是否為輸入框題型
+    const textInput = document.getElementById('textAns');
+    if (textInput) {
+        finalAnswer = textInput.value.trim();
+        if (!finalAnswer) {
+            alert("請輸入內容後再繼續");
+            return;
+        }
+    } else {
+        // 如果是選擇題但沒選答案
+        if (finalAnswer === null) {
+            alert("請選擇一個選項");
+            return;
+        }
     }
 
     // 存入 response 表
@@ -157,9 +175,13 @@ async function handleNext() {
     if (currentIndex < questions.length) {
         renderQuestion();
     } else {
-        // 完成問卷，更新 respondent 狀態
+        // 完成問卷
         await supabase.from('respondent').update({ abandoned: false }).eq('id', respondentId);
-        document.getElementById('app').innerHTML = `<div class="finish-card"><h2>感謝您的填答！</h2><p>您的資料已成功送出。</p></div>`;
+        document.getElementById('app').innerHTML = `
+            <div class="finish-card">
+                <h2>感謝您的填答！</h2>
+                <p>您的資料已成功送出。</p>
+            </div>`;
     }
 }
 
