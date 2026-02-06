@@ -57,8 +57,8 @@ async function fetchQuestions() {
             encouragement_text,
             question (
                 id,
-                question_text,   /* 真實欄位名 */
-                question_type,   /* 真實欄位名 */
+                question_text,
+                question_type,
                 options,
                 order_index
             )
