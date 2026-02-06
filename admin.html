@@ -13,7 +13,8 @@
         .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .table-container { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; }
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; }
-        .user-info { font-size: 0.9rem; color: #bdc3c7; margin-bottom: 20px; }
+        .user-info { font-size: 0.85rem; color: #bdc3c7; margin-bottom: 10px; }
+        .project-selector { background: #3e4451; color: white; border: none; font-size: 0.9rem; padding: 8px; border-radius: 5px; width: 100%; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -22,7 +23,13 @@
     <div class="row">
         <div class="col-md-2 sidebar">
             <h3>Admin Panel</h3>
-            <div id="userInfo" class="user-info">載入中...</div>
+            <div id="userInfo" class="user-info">驗證中...</div>
+            
+            <label class="small text-muted">選擇研究案：</label>
+            <select id="projectSelect" class="project-selector" onchange="window.handleProjectChange(this.value)">
+                <option value="">載入中...</option>
+            </select>
+
             <hr>
             <ul class="nav flex-column">
                 <li class="nav-item mb-2"><a href="#" class="nav-link text-white active">📊 數據概覽</a></li>
@@ -34,7 +41,7 @@
 
         <div class="col-md-10 main-content">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>數據監控儀表板</h2>
+                <h2 id="currentProjectTitle">數據監控儀表板</h2>
                 <button class="btn btn-success" id="btnExport">📥 匯出 SPSS 格式 (CSV)</button>
             </div>
 
@@ -64,7 +71,7 @@
                 <table class="table table-hover mt-3">
                     <thead class="table-light">
                         <tr>
-                            <th>受試者 ID (縮寫)</th>
+                            <th>受試者 ID</th>
                             <th>裝置</th>
                             <th>開始時間</th>
                             <th>填答進度</th>
@@ -82,39 +89,77 @@
     import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
     const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
-    const QUESTIONNAIRE_ID = "db949a8e-95ad-454e-9fa4-050cf9ed238a";
 
-    // --- 安全驗證攔截器 ---
+    let currentQuestionnaireId = null;
+    let totalQuestionsCount = 96; // 預設值，後續可動態計算
+
+    // --- 安全驗證與專案載入 ---
     async function checkAuth() {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error || !session) {
-            // 無登入 Session，強制跳轉回登入頁
             window.location.href = 'login.html';
-        } else {
-            // 已登入，顯示帳號並載入數據
-            document.getElementById('userInfo').innerText = `👤 ${session.user.email}`;
-            loadDashboard();
+            return;
         }
+
+        document.getElementById('userInfo').innerText = `👤 ${session.user.email}`;
+        await loadAuthorizedProjects(session.user.id);
     }
 
-    // 登出功能
+    // 抓取該研究員有權限的專案清單
+    async function loadAuthorizedProjects(userId) {
+        const { data, error } = await supabase
+            .from('project_permission')
+            .select(`
+                project_id,
+                project ( id, project_name )
+            `)
+            .eq('user_id', userId);
+
+        if (error || !data || data.length === 0) {
+            alert("錯誤：您目前未被授權任何研究案。");
+            return;
+        }
+
+        const select = document.getElementById('projectSelect');
+        select.innerHTML = data.map(p => `<option value="${p.project.id}">${p.project.project_name}</option>`).join('');
+        
+        // 預設切換至第一個專案
+        handleProjectChange(data[0].project.id);
+    }
+
+    // 當切換研究案時觸發
+    window.handleProjectChange = async (projectId) => {
+        const { data: quest } = await supabase
+            .from('questionnaire')
+            .select('id, project(project_name)')
+            .eq('project_id', projectId)
+            .single();
+
+        if (quest) {
+            currentQuestionnaireId = quest.id;
+            document.getElementById('currentProjectTitle').innerText = `${quest.project.project_name} - 數據監控`;
+            loadDashboard();
+        }
+    };
+
+    // 登出
     window.handleLogout = async () => {
         await supabase.auth.signOut();
         window.location.href = 'login.html';
     };
 
+    // 核心數據載入
     async function loadDashboard() {
+        if (!currentQuestionnaireId) return;
+
         const { data: respondents, error } = await supabase
             .from('respondent')
             .select('*, response(count)')
-            .eq('questionnaire_id', QUESTIONNAIRE_ID)
+            .eq('questionnaire_id', currentQuestionnaireId)
             .order('start_time', { ascending: false });
 
-        if (error) {
-            console.error("讀取失敗:", error);
-            return;
-        }
+        if (error) return;
 
         const total = respondents.length;
         const completed = respondents.filter(r => !r.abandoned).length;
@@ -125,33 +170,24 @@
         const tbody = document.getElementById('respondentTable');
         tbody.innerHTML = respondents.map(r => `
             <tr>
-                <td><code>${r.id.substring(0, 8)}...</code></td>
-                <td>${r.device_type === 'mobile' ? '📱 手機' : '💻 平板/電腦'}</td>
+                <td><code>${r.id.substring(0, 8)}</code></td>
+                <td>${r.device_type === 'mobile' ? '📱' : '💻'}</td>
                 <td>${new Date(r.start_time).toLocaleString()}</td>
                 <td>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-info" style="width: ${(r.response[0].count / 96 * 100)}%"></div>
+                    <div class="progress" style="height: 8px; width: 100px; display:inline-flex; margin-right: 5px;">
+                        <div class="progress-bar bg-info" style="width: ${(r.response[0].count / totalQuestionsCount * 100)}%"></div>
                     </div>
-                    <small>${r.response[0].count} / 96 題</small>
+                    <small>${r.response[0].count} / ${totalQuestionsCount}</small>
                 </td>
-                <td>
-                    <span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">
-                        ${r.abandoned ? '填答中' : '已完成'}
-                    </span>
-                </td>
+                <td><span class="status-badge ${r.abandoned ? 'bg-warning text-dark' : 'bg-success text-white'}">${r.abandoned ? '填答中' : '已完成'}</span></td>
             </tr>
         `).join('');
     }
 
-    // 匯出按鈕
-    document.getElementById('btnExport').onclick = async () => {
-        alert("正在準備 SPSS 格式 CSV，這將包含 96 題的寬格式數據...");
-        // 匯出邏輯開發中
-    };
+    // 匯出功能預留
+    document.getElementById('btnExport').onclick = () => alert("匯出功能準備中...");
 
-    // 執行啟動檢查
     checkAuth();
-
 </script>
 </body>
 </html>
