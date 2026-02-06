@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研究後台登入</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body { background-color: #f4f7f6; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        .btn-primary { background-color: #4a69bd; border: none; padding: 12px; width: 100%; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="login-card">
+    <h3 class="text-center mb-4">研究管理後台</h3>
+    <div id="loginForm">
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" id="email" class="form-control" placeholder="請輸入研究員帳號" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">密碼</label>
+            <input type="password" id="password" class="form-control" placeholder="請輸入密碼" required>
+        </div>
+        <button id="btnLogin" class="btn btn-primary">登入系統</button>
+        <div id="errMsg" class="text-danger mt-3 text-center" style="display:none;">帳號或密碼錯誤</div>
+    </div>
+</div>
+
+<script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+    const supabase = createClient("https://mbdatbwrralhlkhyhxlr.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1iZGF0YndycmFsaGxraHloeGxyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjg2OTksImV4cCI6MjA4NTc0NDY5OX0.5kv8UvBRbYfcZGLXdKI_cWtplkN3YT05XC5AUhVtsok");
+
+    document.getElementById('btnLogin').onclick = async () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const errMsg = document.getElementById('errMsg');
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password,
+        });
+
+        if (error) {
+            errMsg.innerText = "登入失敗：" + error.message;
+            errMsg.style.display = 'block';
+        } else {
+            // 登入成功，將 Session 資訊存入瀏覽器並跳轉
+            window.location.href = 'admin.html';
+        }
+    };
+</script>
+</body>
+</html>
